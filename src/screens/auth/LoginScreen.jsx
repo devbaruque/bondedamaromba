@@ -80,6 +80,7 @@ const LoginScreen = ({ navigation }) => {
                 style={styles.logo}
                 resizeMode="contain"
               />
+              <Text style={styles.appTitle}>Bonde da Maromba</Text>
             </View>
 
             <View style={styles.formContainer}>
@@ -192,6 +193,11 @@ const styles = StyleSheet.create({
     color: COLORS.FEEDBACK.ERROR,
     textAlign: 'center',
     marginBottom: SPACING.MD,
+  },
+  appTitle: {
+    ...TEXT_VARIANT.headingLarge,
+    color: COLORS.TEXT.LIGHT,
+    marginTop: SPACING.MD,
   },
 });
 

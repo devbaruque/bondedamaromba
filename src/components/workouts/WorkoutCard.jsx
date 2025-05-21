@@ -9,11 +9,24 @@ import defaultImageBase64 from '../../assets/default-workout';
  * @param {object} props - Propriedades do componente
  * @param {object} props.workout - Dados do treino
  * @param {function} props.onPress - Função chamada ao clicar no card
+ * @param {function} props.onEdit - Função chamada ao clicar em editar
+ * @param {function} props.onDelete - Função chamada ao clicar em excluir
  * @param {number} props.exerciseCount - Quantidade de exercícios no treino
  */
-const WorkoutCard = ({ workout, onPress, exerciseCount = 0 }) => {
+const WorkoutCard = ({ workout, onPress, onEdit, onDelete, exerciseCount = 0 }) => {
   // Usar imagem padrão se o treino não tiver uma
   const imageSource = workout.image_url ? { uri: workout.image_url } : { uri: defaultImageBase64 };
+
+  // Prevenir propagação de eventos
+  const handleEdit = (e) => {
+    e.stopPropagation();
+    onEdit && onEdit();
+  };
+
+  const handleDelete = (e) => {
+    e.stopPropagation();
+    onDelete && onDelete();
+  };
   
   return (
     <TouchableOpacity
@@ -27,6 +40,16 @@ const WorkoutCard = ({ workout, onPress, exerciseCount = 0 }) => {
         imageStyle={styles.backgroundImage}
       >
         <View style={styles.overlay}>
+          {/* Menu de opções */}
+          <View style={styles.actions}>
+            <TouchableOpacity style={styles.actionButton} onPress={handleEdit}>
+              <Ionicons name="pencil" size={18} color={COLORS.TEXT.LIGHT} />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.actionButton} onPress={handleDelete}>
+              <Ionicons name="trash-outline" size={18} color={COLORS.TEXT.LIGHT} />
+            </TouchableOpacity>
+          </View>
+          
           <View style={styles.content}>
             <Text style={styles.title}>{workout.name}</Text>
             
@@ -51,9 +74,8 @@ const WorkoutCard = ({ workout, onPress, exerciseCount = 0 }) => {
 
 const styles = StyleSheet.create({
   container: {
-    width: 280,
-    height: 180,
-    marginRight: SPACING.MD,
+    width: '100%',
+    height: 160,
     borderRadius: BORDER_RADIUS.LG,
     overflow: 'hidden',
   },
@@ -96,6 +118,21 @@ const styles = StyleSheet.create({
   detailText: {
     ...TEXT_VARIANT.bodySmall,
     color: COLORS.TEXT.LIGHT,
+    marginLeft: SPACING.XS,
+  },
+  actions: {
+    position: 'absolute',
+    top: SPACING.SM,
+    right: SPACING.SM,
+    flexDirection: 'row',
+  },
+  actionButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginLeft: SPACING.XS,
   },
 });

@@ -101,6 +101,7 @@ const RegisterScreen = ({ navigation }) => {
                 style={styles.logo}
                 resizeMode="contain"
               />
+              <Text style={styles.appTitle}>Bonde da Maromba</Text>
             </View>
 
             <View style={styles.formContainer}>
@@ -203,10 +204,10 @@ const styles = StyleSheet.create({
     height: 200,
     marginBottom: SPACING.MD,
   },
-  appName: {
+  appTitle: {
     ...TEXT_VARIANT.headingLarge,
     color: COLORS.TEXT.LIGHT,
-    marginBottom: SPACING.MD,
+    marginTop: SPACING.MD,
   },
   formContainer: {
     width: '100%',

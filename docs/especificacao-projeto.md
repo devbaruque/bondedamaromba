@@ -272,12 +272,12 @@ O **Bonde da Maromba** é um aplicativo mobile desenvolvido em React Native e Su
 - [x] Persistência de sessão
 
 ### Fase 2: Gerenciamento de Treinos (2-3 semanas)
-- [ ] Modelagem do banco no Supabase
-- [ ] Implementação das políticas RLS
-- [ ] Tela de Seleção de Treinos
-- [ ] CRUD de treinos
-- [ ] Tela de lista de exercícios (visualização)
-- [ ] Layout base das telas principais
+- [x] Modelagem do banco no Supabase
+- [x] Implementação das políticas RLS
+- [x] Tela de Seleção de Treinos
+- [x] CRUD de treinos
+- [x] Tela de lista de exercícios (visualização)
+- [x] Layout base das telas principais
 
 ### Fase 3: Funcionalidades de Exercícios (3-4 semanas)
 - [ ] CRUD completo de exercícios

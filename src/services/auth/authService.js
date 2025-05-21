@@ -1,4 +1,4 @@
-import supabase, { auth } from '../supabase';
+import supabase from '../supabase';
 
 /**
  * Realiza login do usuário com email e senha
@@ -8,7 +8,7 @@ import supabase, { auth } from '../supabase';
  */
 export async function signIn(email, password) {
   try {
-    const { data, error } = await auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -94,7 +94,7 @@ export async function signUp(email, password, userData = {}) {
     console.log('Iniciando cadastro para:', email);
     
     // Cadastro do usuário no Auth com os metadados
-    const { data: authData, error: authError } = await auth.signUp({
+    const { data: authData, error: authError } = await supabase.auth.signUp({
       email,
       password,
       options: {
@@ -151,7 +151,7 @@ export async function signUp(email, password, userData = {}) {
  */
 export async function signOut() {
   try {
-    const { error } = await auth.signOut();
+    const { error } = await supabase.auth.signOut();
     if (error) return { error: error.message || 'Erro ao sair da conta' };
     return { success: true };
   } catch (error) {
@@ -166,7 +166,7 @@ export async function signOut() {
  */
 export async function getCurrentSession() {
   try {
-    const { data, error } = await auth.getSession();
+    const { data, error } = await supabase.auth.getSession();
     if (error) return { error: error.message || 'Erro ao verificar sessão' };
     return { session: data.session };
   } catch (error) {
@@ -181,7 +181,7 @@ export async function getCurrentSession() {
  */
 export async function getCurrentUser() {
   try {
-    const { data, error } = await auth.getUser();
+    const { data, error } = await supabase.auth.getUser();
     if (error) return { error: error.message || 'Erro ao obter usuário atual' };
     return { user: data.user };
   } catch (error) {

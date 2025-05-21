@@ -10,6 +10,7 @@ import RegisterScreen from '../screens/auth/RegisterScreen';
 import WorkoutSelectionScreen from '../screens/workouts/WorkoutSelectionScreen';
 import ExerciseListScreen from '../screens/workouts/ExerciseListScreen';
 import AddExerciseScreen from '../screens/workouts/AddExerciseScreen';
+import ExerciseDetailScreen from '../screens/workouts/ExerciseDetailScreen';
 import LoadingScreen from '../screens/LoadingScreen';
 
 // Cores do tema
@@ -63,6 +64,11 @@ const AppNavigator = () => {
         name="AddExercise" 
         component={AddExerciseScreen}
         options={{ title: "Novo Exercício" }}
+      />
+      <Stack.Screen 
+        name="ExerciseDetail" 
+        component={ExerciseDetailScreen}
+        options={{ title: "Detalhes do Exercício" }}
       />
     </Stack.Navigator>
   );

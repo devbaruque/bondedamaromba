@@ -17,19 +17,32 @@ const validationSchema = Yup.object().shape({
 /**
  * Componente de formulário para adicionar/editar planos de treino
  * @param {object} props - Propriedades do componente
- * @param {object} props.initialValues - Valores iniciais do formulário
+ * @param {object} props.workout - Treino a ser editado (se for edição)
  * @param {function} props.onSubmit - Função chamada ao submeter o formulário
- * @param {boolean} props.isEditing - Se está editando um treino existente
- * @param {boolean} props.isLoading - Se está carregando
+ * @param {function} props.onCancel - Função chamada ao cancelar
+ * @param {boolean} props.isSubmitting - Se está processando o envio do form
  */
 const WorkoutForm = ({ 
-  initialValues = { name: '', description: '', image_url: '' },
+  workout,
   onSubmit, 
-  isEditing = false,
-  isLoading = false 
+  onCancel,
+  isSubmitting = false 
 }) => {
   const { user } = useAuth();
   const [imageLoading, setImageLoading] = useState(false);
+  const isEditing = !!workout;
+  
+  // Definir valores iniciais com base no treino (se fornecido)
+  const initialValues = workout ? {
+    id: workout.id,
+    name: workout.name || '',
+    description: workout.description || '',
+    image_url: workout.image_url || '',
+  } : {
+    name: '',
+    description: '',
+    image_url: '',
+  };
   
   // Solicitar permissões para acessar a galeria
   const requestGalleryPermission = async () => {
@@ -51,6 +64,8 @@ const WorkoutForm = ({
     if (!hasPermission) return;
 
     try {
+      console.log('Abrindo seleção de imagens');
+      
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -59,35 +74,67 @@ const WorkoutForm = ({
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
+        console.log('Imagem selecionada:', result.assets[0].uri);
         setImageLoading(true);
         
-        // Se estamos editando um treino existente, precisamos do ID para salvar a imagem
-        if (isEditing && initialValues.id) {
-          // Upload da imagem para o Supabase Storage
-          const { data, error } = await uploadWorkoutImage(
-            { uri: result.assets[0].uri, name: result.assets[0].uri.split('/').pop() },
-            initialValues.id
-          );
+        // Criamos um objeto File compatível com o formato esperado pelo serviço
+        const selectedAsset = result.assets[0];
+        const fileName = selectedAsset.uri.split('/').pop();
+        
+        // Criar um objeto simulando File para o API de upload
+        const fileObject = {
+          uri: selectedAsset.uri,
+          name: fileName,
+          type: `image/${fileName.split('.').pop()}`
+        };
+        
+        console.log('Preparando objeto de imagem:', {
+          fileName,
+          uri: fileObject.uri,
+          type: fileObject.type
+        });
+        
+        // Se estamos editando um treino existente, fazemos o upload agora
+        if (isEditing && workout.id) {
+          try {
+            console.log('Fazendo upload de imagem para treino existente:', workout.id);
+            
+            // Upload da imagem para o Supabase Storage
+            const { data, error } = await uploadWorkoutImage(fileObject, workout.id);
 
-          if (error) {
-            Alert.alert('Erro', 'Não foi possível fazer o upload da imagem.');
-            setImageLoading(false);
-            return;
+            if (error) {
+              console.error('Erro ao fazer upload da imagem:', error);
+              Alert.alert('Erro', `Não foi possível fazer o upload da imagem: ${error}`);
+              setImageLoading(false);
+              return;
+            }
+
+            if (data && data.url) {
+              console.log('Upload concluído, URL:', data.url);
+              setFieldValue('image_url', data.url);
+              Alert.alert('Sucesso', 'Imagem atualizada com sucesso!');
+            } else {
+              console.error('Resposta inesperada do serviço de upload:', data);
+              Alert.alert('Erro', 'Resposta inesperada do serviço de upload');
+            }
+          } catch (uploadError) {
+            console.error('Erro ao fazer upload de imagem:', uploadError);
+            Alert.alert('Erro', 'Não foi possível fazer o upload da imagem. Tente novamente.');
           }
-
-          setFieldValue('image_url', data.url);
         } else {
-          // Se estamos criando um novo treino, armazenamos temporariamente apenas a URI local
-          // O upload real será feito após criar o treino
-          setFieldValue('image_url', result.assets[0].uri);
-          setFieldValue('localImage', result.assets[0]);
+          // Se estamos criando um novo treino, armazenamos temporariamente apenas o objeto para upload posterior
+          console.log('Armazenando imagem para upload posterior');
+          setFieldValue('image_url', selectedAsset.uri);
+          setFieldValue('localImage', fileObject);
         }
         
         setImageLoading(false);
+      } else {
+        console.log('Nenhuma imagem selecionada ou seleção cancelada');
       }
     } catch (error) {
       console.error('Erro ao selecionar imagem:', error);
-      Alert.alert('Erro', 'Não foi possível selecionar a imagem.');
+      Alert.alert('Erro', 'Não foi possível selecionar a imagem. Tente novamente.');
       setImageLoading(false);
     }
   };
@@ -104,7 +151,7 @@ const WorkoutForm = ({
           <TouchableOpacity 
             style={styles.imageContainer}
             onPress={() => pickImage(setFieldValue)}
-            disabled={imageLoading || isLoading}
+            disabled={imageLoading || isSubmitting}
           >
             {imageLoading ? (
               <View style={styles.loadingContainer}>
@@ -147,15 +194,23 @@ const WorkoutForm = ({
             numberOfLines={3}
           />
 
-          {/* Botão de salvar */}
-          <Button
-            title={isEditing ? 'Salvar alterações' : 'Criar treino'}
-            onPress={handleSubmit}
-            disabled={isLoading || imageLoading}
-            loading={isLoading}
-            fullWidth
-            style={styles.button}
-          />
+          {/* Botões */}
+          <View style={styles.buttonContainer}>
+            <Button
+              title="Cancelar"
+              onPress={onCancel}
+              variant="outline"
+              disabled={isSubmitting}
+              style={styles.cancelButton}
+            />
+            <Button
+              title={isEditing ? 'Salvar alterações' : 'Criar treino'}
+              onPress={handleSubmit}
+              disabled={isSubmitting || imageLoading}
+              loading={isSubmitting}
+              style={styles.submitButton}
+            />
+          </View>
         </View>
       )}
     </Formik>
@@ -197,8 +252,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  button: {
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginTop: SPACING.MD,
+  },
+  cancelButton: {
+    flex: 1,
+    marginRight: SPACING.SM,
+  },
+  submitButton: {
+    flex: 2,
   },
 });
 
