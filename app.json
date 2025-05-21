@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -40,6 +39,10 @@
       "eas": {
         "projectId": "16df13aa-6317-4197-9cfa-6bb9263b6e22"
       }
+    },
+    "jsEngine": "hermes",
+    "runtimeVersion": {
+      "policy": "sdkVersion"
     }
   }
 }

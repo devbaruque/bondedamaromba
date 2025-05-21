@@ -1,18 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, Alert, RefreshControl, Image 
+  ActivityIndicator, Alert, RefreshControl
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, TEXT_VARIANT, BORDER_RADIUS } from '../../design';
-import { getExercisesByWorkoutPlan } from '../../services';
-import { Card, Modal } from '../../components/ui';
+import { COLORS, SPACING, TEXT_VARIANT } from '../../design';
+import { getExercisesByWorkoutPlan, deleteExercise } from '../../services';
+import { Modal } from '../../components/ui';
+import ExerciseCard from '../../components/features/ExerciseCard';
 
 const ExerciseListScreen = ({ navigation, route }) => {
   const { workout } = route.params;
   const [exercises, setExercises] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [selectedExerciseId, setSelectedExerciseId] = useState(null);
+  const [completedExercises, setCompletedExercises] = useState({});
   
   // Configurar a navegação ao montar o componente
   useEffect(() => {
@@ -28,6 +32,15 @@ const ExerciseListScreen = ({ navigation, route }) => {
       ),
     });
   }, [navigation, workout]);
+
+  // Recarregar exercícios quando a tela entrar em foco
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      fetchExercises();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   // Buscar exercícios
   const fetchExercises = async () => {
@@ -51,11 +64,6 @@ const ExerciseListScreen = ({ navigation, route }) => {
     }
   };
 
-  // Carregar exercícios ao montar o componente
-  useEffect(() => {
-    fetchExercises();
-  }, [workout.id]);
-
   // Pull to refresh
   const onRefresh = () => {
     setRefreshing(true);
@@ -69,61 +77,65 @@ const ExerciseListScreen = ({ navigation, route }) => {
 
   // Navegação para ver detalhes de um exercício
   const handleExercisePress = (exercise) => {
-    navigation.navigate('ExerciseDetail', { exercise });
+    navigation.navigate('ExerciseDetail', { exercise, isCompleted: !!completedExercises[exercise.id] });
+  };
+
+  // Editar exercício
+  const handleEditExercise = (exercise) => {
+    navigation.navigate('EditExercise', { exercise });
+  };
+
+  // Confirmar exclusão de exercício
+  const confirmDeleteExercise = (exerciseId) => {
+    setSelectedExerciseId(exerciseId);
+    setShowDeleteModal(true);
+  };
+
+  // Excluir exercício
+  const handleDeleteExercise = async () => {
+    if (!selectedExerciseId) return;
+    
+    try {
+      setIsLoading(true);
+      const { error } = await deleteExercise(selectedExerciseId);
+      
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível excluir o exercício.');
+        return;
+      }
+      
+      // Remover o exercício da lista
+      setExercises(exercises.filter(ex => ex.id !== selectedExerciseId));
+      Alert.alert('Sucesso', 'Exercício excluído com sucesso!');
+    } catch (error) {
+      console.error('Erro ao excluir exercício:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao excluir o exercício.');
+    } finally {
+      setShowDeleteModal(false);
+      setSelectedExerciseId(null);
+      setIsLoading(false);
+    }
+  };
+
+  // Alternar status de conclusão
+  const handleToggleComplete = (exerciseId) => {
+    setCompletedExercises(prev => ({
+      ...prev,
+      [exerciseId]: !prev[exerciseId]
+    }));
   };
 
   // Renderizar um item da lista de exercícios
   const renderExerciseItem = ({ item }) => {
-    // Determinar se há imagens para este exercício
-    const hasImages = item.exercise_images && item.exercise_images.length > 0;
-    
     return (
-      <Card 
-        style={styles.exerciseCard}
+      <ExerciseCard
+        exercise={item}
         onPress={() => handleExercisePress(item)}
-      >
-        <View style={styles.exerciseContent}>
-          {/* Ícone ou primeira imagem */}
-          <View style={styles.exerciseImageContainer}>
-            {hasImages ? (
-              <Image 
-                source={{ uri: item.exercise_images[0].image_url }} 
-                style={styles.exerciseImage} 
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.exerciseIcon}>
-                <Ionicons name="barbell-outline" size={32} color={COLORS.PRIMARY} />
-              </View>
-            )}
-          </View>
-          
-          {/* Informações do exercício */}
-          <View style={styles.exerciseInfo}>
-            <Text style={styles.exerciseName}>{item.name}</Text>
-            
-            <View style={styles.exerciseDetails}>
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Séries:</Text>
-                <Text style={styles.detailValue}>{item.sets}</Text>
-              </View>
-              
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Repetições:</Text>
-                <Text style={styles.detailValue}>{item.repetitions}</Text>
-              </View>
-              
-              <View style={styles.detailItem}>
-                <Text style={styles.detailLabel}>Descanso:</Text>
-                <Text style={styles.detailValue}>{item.rest_time}s</Text>
-              </View>
-            </View>
-          </View>
-          
-          {/* Ícone de seta */}
-          <Ionicons name="chevron-forward" size={24} color={COLORS.GRAY[600]} />
-        </View>
-      </Card>
+        isCompleted={!!completedExercises[item.id]}
+        onToggleComplete={handleToggleComplete}
+        onEdit={() => handleEditExercise(item)}
+        onDelete={() => confirmDeleteExercise(item.id)}
+      />
     );
   };
 
@@ -167,7 +179,6 @@ const ExerciseListScreen = ({ navigation, route }) => {
         renderItem={renderExerciseItem}
         contentContainerStyle={styles.exerciseList}
         showsVerticalScrollIndicator={false}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
         refreshControl={
           <RefreshControl 
             refreshing={refreshing} 
@@ -183,6 +194,35 @@ const ExerciseListScreen = ({ navigation, route }) => {
   return (
     <View style={styles.container}>
       {renderContent()}
+      
+      {/* Modal de confirmação de exclusão */}
+      <Modal
+        visible={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        title="Excluir Exercício"
+      >
+        <View style={styles.modalContent}>
+          <Text style={styles.modalText}>
+            Tem certeza que deseja excluir este exercício? Esta ação não pode ser desfeita.
+          </Text>
+          
+          <View style={styles.modalButtons}>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton]}
+              onPress={() => setShowDeleteModal(false)}
+            >
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.modalButton, styles.deleteButton]}
+              onPress={handleDeleteExercise}
+            >
+              <Text style={styles.deleteButtonText}>Excluir</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -227,62 +267,38 @@ const styles = StyleSheet.create({
   exerciseList: {
     padding: SPACING.MD,
   },
-  exerciseCard: {
-    marginBottom: 0,
-    padding: 0,
-  },
-  exerciseContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  modalContent: {
     padding: SPACING.MD,
   },
-  exerciseImageContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: BORDER_RADIUS.MD,
-    overflow: 'hidden',
-    backgroundColor: COLORS.GRAY[800],
-    marginRight: SPACING.MD,
-  },
-  exerciseImage: {
-    width: '100%',
-    height: '100%',
-  },
-  exerciseIcon: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  exerciseInfo: {
-    flex: 1,
-  },
-  exerciseName: {
-    ...TEXT_VARIANT.labelLarge,
-    color: COLORS.TEXT.LIGHT,
-    marginBottom: SPACING.XS,
-  },
-  exerciseDetails: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
-  detailItem: {
-    flexDirection: 'row',
-    marginRight: SPACING.MD,
-    marginBottom: SPACING.XS,
-  },
-  detailLabel: {
-    ...TEXT_VARIANT.bodySmall,
-    color: COLORS.GRAY[500],
-    marginRight: SPACING.XS,
-  },
-  detailValue: {
-    ...TEXT_VARIANT.bodySmall,
+  modalText: {
+    ...TEXT_VARIANT.bodyDefault,
     color: COLORS.TEXT.DEFAULT,
-    fontWeight: '500',
+    marginBottom: SPACING.LG,
   },
-  separator: {
-    height: SPACING.SM,
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: SPACING.SM,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: SPACING.XS,
+  },
+  cancelButton: {
+    backgroundColor: COLORS.GRAY[700],
+  },
+  cancelButtonText: {
+    ...TEXT_VARIANT.labelDefault,
+    color: COLORS.TEXT.LIGHT,
+  },
+  deleteButton: {
+    backgroundColor: COLORS.FEEDBACK.ERROR,
+  },
+  deleteButtonText: {
+    ...TEXT_VARIANT.labelDefault,
+    color: COLORS.TEXT.LIGHT,
   },
 });
 

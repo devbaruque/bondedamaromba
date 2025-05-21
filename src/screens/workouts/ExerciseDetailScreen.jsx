@@ -1,24 +1,22 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, ScrollView, TouchableOpacity, 
-  Image, Alert, ActivityIndicator, Vibration 
+  Image, Alert, ActivityIndicator
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, TEXT_VARIANT, BORDER_RADIUS } from '../../design';
-import { getExerciseById, updateExercise, deleteExercise } from '../../services';
+import { getExerciseById, deleteExercise } from '../../services';
 import { Button, Modal } from '../../components/ui';
+import RestTimer from '../../components/features/RestTimer';
 
 const ExerciseDetailScreen = ({ navigation, route }) => {
-  const { exercise: initialExercise } = route.params;
+  const { exercise: initialExercise, isCompleted = false } = route.params;
   
   const [exercise, setExercise] = useState(initialExercise);
   const [isLoading, setIsLoading] = useState(true);
-  const [timerActive, setTimerActive] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(exercise.rest_time || 60);
   const [completedSets, setCompletedSets] = useState([]);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  
-  const timerRef = useRef(null);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
   
   useEffect(() => {
     fetchExerciseDetails();
@@ -43,13 +41,6 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
         </View>
       ),
     });
-    
-    // Limpar timer quando sair da tela
-    return () => {
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
-    };
   }, [exercise.id, navigation]);
   
   // Buscar detalhes completos do exercício
@@ -62,8 +53,8 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
         console.error('Erro ao buscar detalhes do exercício:', error);
       } else if (data) {
         setExercise(data);
-        // Inicializar o array de séries completadas
-        setCompletedSets(new Array(data.sets).fill(false));
+        // Inicializar o array de séries completadas com base no parâmetro isCompleted
+        setCompletedSets(new Array(data.sets).fill(isCompleted));
       }
     } catch (error) {
       console.error('Erro ao buscar detalhes do exercício:', error);
@@ -90,6 +81,7 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
       
       // Voltar para a tela anterior
       navigation.goBack();
+      Alert.alert('Sucesso', 'Exercício excluído com sucesso!');
     } catch (error) {
       console.error('Erro ao excluir exercício:', error);
       Alert.alert('Erro', 'Ocorreu um erro ao excluir o exercício.');
@@ -99,40 +91,6 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
     }
   };
   
-  // Iniciar/pausar timer de descanso
-  const toggleTimer = () => {
-    if (timerActive) {
-      // Pausar timer
-      clearInterval(timerRef.current);
-      setTimerActive(false);
-    } else {
-      // Iniciar timer
-      setTimerActive(true);
-      timerRef.current = setInterval(() => {
-        setTimeRemaining((prev) => {
-          if (prev <= 1) {
-            // Timer acabou
-            clearInterval(timerRef.current);
-            setTimerActive(false);
-            // Vibrar para sinalizar que o tempo acabou
-            Vibration.vibrate([500, 200, 500]);
-            return exercise.rest_time || 60;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-  };
-  
-  // Resetar timer
-  const resetTimer = () => {
-    if (timerActive) {
-      clearInterval(timerRef.current);
-      setTimerActive(false);
-    }
-    setTimeRemaining(exercise.rest_time || 60);
-  };
-  
   // Alternar estado de conclusão de uma série
   const toggleSetCompletion = (index) => {
     const newCompletedSets = [...completedSets];
@@ -140,12 +98,10 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
     setCompletedSets(newCompletedSets);
   };
   
-  // Converter segundos para formato MM:SS
-  const formatTime = (seconds) => {
-    const minutes = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${minutes < 10 ? '0' : ''}${minutes}:${secs < 10 ? '0' : ''}${secs}`;
-  };
+  // Callback para quando o timer termina
+  const handleTimerComplete = useCallback(() => {
+    Alert.alert('Descanso Finalizado', 'Hora de fazer a próxima série!');
+  }, []);
 
   // Verificar se todas as séries estão completas
   const allSetsCompleted = completedSets.every(set => set);
@@ -153,6 +109,23 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
   // Marcar todas as séries como concluídas
   const markAllSetsCompleted = () => {
     setCompletedSets(new Array(exercise.sets).fill(true));
+  };
+
+  // Navegar entre imagens
+  const handleNextImage = () => {
+    if (exercise.exercise_images && exercise.exercise_images.length > 0) {
+      setCurrentImageIndex((prev) => 
+        prev === exercise.exercise_images.length - 1 ? 0 : prev + 1
+      );
+    }
+  };
+
+  const handlePrevImage = () => {
+    if (exercise.exercise_images && exercise.exercise_images.length > 0) {
+      setCurrentImageIndex((prev) => 
+        prev === 0 ? exercise.exercise_images.length - 1 : prev - 1
+      );
+    }
   };
 
   if (isLoading) {
@@ -163,17 +136,46 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
     );
   }
 
+  // Ordenar imagens por order_index
+  const sortedImages = exercise.exercise_images && exercise.exercise_images.length > 0
+    ? [...exercise.exercise_images].sort((a, b) => a.order_index - b.order_index)
+    : [];
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         {/* Imagens do exercício */}
         <View style={styles.imageContainer}>
-          {exercise.exercise_images && exercise.exercise_images.length > 0 ? (
-            <Image 
-              source={{ uri: exercise.exercise_images[0].image_url }}
-              style={styles.image}
-              resizeMode="cover"
-            />
+          {sortedImages.length > 0 ? (
+            <>
+              <Image 
+                source={{ uri: sortedImages[currentImageIndex].image_url }}
+                style={styles.image}
+                resizeMode="cover"
+              />
+              
+              {sortedImages.length > 1 && (
+                <View style={styles.imageNavigation}>
+                  <TouchableOpacity 
+                    style={styles.imageNavButton} 
+                    onPress={handlePrevImage}
+                  >
+                    <Ionicons name="chevron-back" size={24} color={COLORS.TEXT.LIGHT} />
+                  </TouchableOpacity>
+                  
+                  <Text style={styles.imageCounter}>
+                    {currentImageIndex + 1}/{sortedImages.length}
+                  </Text>
+                  
+                  <TouchableOpacity 
+                    style={styles.imageNavButton} 
+                    onPress={handleNextImage}
+                  >
+                    <Ionicons name="chevron-forward" size={24} color={COLORS.TEXT.LIGHT} />
+                  </TouchableOpacity>
+                </View>
+              )}
+            </>
           ) : (
             <View style={styles.imagePlaceholder}>
               <Ionicons name="barbell-outline" size={64} color={COLORS.GRAY[700]} />
@@ -245,41 +247,17 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
           )}
         </View>
         
-        {/* Timer de descanso */}
+        {/* Timer de Descanso */}
         <View style={styles.timerContainer}>
           <Text style={styles.sectionTitle}>Timer de Descanso</Text>
-          
-          <View style={styles.timerDisplay}>
-            <Text style={styles.timerText}>{formatTime(timeRemaining)}</Text>
-          </View>
-          
-          <View style={styles.timerControls}>
-            <TouchableOpacity 
-              style={styles.timerButton}
-              onPress={toggleTimer}
-            >
-              <Ionicons 
-                name={timerActive ? "pause" : "play"} 
-                size={28} 
-                color={COLORS.TEXT.LIGHT} 
-              />
-              <Text style={styles.buttonText}>
-                {timerActive ? "Pausar" : "Iniciar"}
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={styles.timerButton}
-              onPress={resetTimer}
-            >
-              <Ionicons name="refresh" size={28} color={COLORS.TEXT.LIGHT} />
-              <Text style={styles.buttonText}>Reiniciar</Text>
-            </TouchableOpacity>
-          </View>
+          <RestTimer 
+            defaultTime={exercise.rest_time} 
+            onComplete={handleTimerComplete} 
+          />
         </View>
       </ScrollView>
-      
-      {/* Modal de confirmação para excluir */}
+
+      {/* Modal de confirmação de exclusão */}
       <Modal
         visible={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
@@ -287,26 +265,23 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
       >
         <View style={styles.modalContent}>
           <Text style={styles.modalText}>
-            Tem certeza que deseja excluir o exercício "{exercise.name}"?
-          </Text>
-          <Text style={styles.modalSubtext}>
-            Esta ação não pode ser desfeita.
+            Tem certeza que deseja excluir este exercício? Esta ação não pode ser desfeita.
           </Text>
           
           <View style={styles.modalButtons}>
-            <Button
-              title="Cancelar"
+            <TouchableOpacity
+              style={[styles.modalButton, styles.cancelButton]}
               onPress={() => setShowDeleteModal(false)}
-              variant="outline"
-              style={styles.modalButton}
-            />
-            <Button
-              title="Excluir"
+            >
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.modalButton, styles.deleteButton]}
               onPress={handleDelete}
-              variant="danger"
-              style={styles.modalButton}
-              loading={isLoading}
-            />
+            >
+              <Text style={styles.deleteButtonText}>Excluir</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -326,21 +301,22 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING.MD,
+    paddingBottom: SPACING.XL * 2,
   },
   headerButtons: {
     flexDirection: 'row',
   },
   headerButton: {
-    marginLeft: SPACING.SM,
-    padding: SPACING.XS,
+    marginLeft: SPACING.MD,
   },
   imageContainer: {
     width: '100%',
-    height: 200,
+    height: 250,
     borderRadius: BORDER_RADIUS.MD,
     overflow: 'hidden',
+    backgroundColor: COLORS.GRAY[800],
     marginBottom: SPACING.MD,
-    backgroundColor: COLORS.GRAY[900],
+    position: 'relative',
   },
   image: {
     width: '100%',
@@ -351,7 +327,25 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.GRAY[900],
+  },
+  imageNavigation: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingVertical: SPACING.SM,
+    paddingHorizontal: SPACING.MD,
+  },
+  imageNavButton: {
+    padding: SPACING.XS,
+  },
+  imageCounter: {
+    ...TEXT_VARIANT.bodySmall,
+    color: COLORS.TEXT.LIGHT,
   },
   detailsContainer: {
     backgroundColor: COLORS.BACKGROUND.DEFAULT,
@@ -360,47 +354,45 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.MD,
   },
   detailTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...TEXT_VARIANT.headingSmall,
     color: COLORS.TEXT.LIGHT,
     marginBottom: SPACING.MD,
   },
   detailRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     flexWrap: 'wrap',
+    marginBottom: SPACING.SM,
   },
   detailItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginRight: SPACING.MD,
     marginBottom: SPACING.SM,
   },
   detailLabel: {
-    fontSize: 14,
-    color: COLORS.GRAY[400],
-    marginLeft: SPACING.XS,
-    marginRight: SPACING.XS,
+    ...TEXT_VARIANT.bodyDefault,
+    color: COLORS.GRAY[500],
+    marginHorizontal: SPACING.XS,
   },
   detailValue: {
-    fontSize: 14,
-    fontWeight: '600',
+    ...TEXT_VARIANT.bodyDefault,
     color: COLORS.TEXT.LIGHT,
+    fontWeight: '600',
   },
   notesContainer: {
-    marginTop: SPACING.MD,
-    paddingTop: SPACING.MD,
+    marginTop: SPACING.SM,
     borderTopWidth: 1,
     borderTopColor: COLORS.GRAY[800],
+    paddingTop: SPACING.SM,
   },
   notesTitle: {
-    fontSize: 16,
-    fontWeight: '500',
+    ...TEXT_VARIANT.labelDefault,
     color: COLORS.TEXT.LIGHT,
     marginBottom: SPACING.XS,
   },
   notesText: {
-    fontSize: 14,
-    color: COLORS.GRAY[300],
+    ...TEXT_VARIANT.bodyDefault,
+    color: COLORS.TEXT.MUTED,
   },
   setsContainer: {
     backgroundColor: COLORS.BACKGROUND.DEFAULT,
@@ -409,8 +401,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.MD,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...TEXT_VARIANT.headingSmall,
     color: COLORS.TEXT.LIGHT,
     marginBottom: SPACING.MD,
   },
@@ -420,17 +411,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.SM,
     paddingHorizontal: SPACING.MD,
-    borderWidth: 1,
-    borderColor: COLORS.GRAY[700],
+    backgroundColor: COLORS.BACKGROUND.DARK,
     borderRadius: BORDER_RADIUS.SM,
     marginBottom: SPACING.SM,
   },
   completedSetItem: {
-    borderColor: COLORS.FEEDBACK.SUCCESS,
-    backgroundColor: `${COLORS.FEEDBACK.SUCCESS}20`,
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.FEEDBACK.SUCCESS,
   },
   setText: {
-    fontSize: 16,
+    ...TEXT_VARIANT.bodyDefault,
     color: COLORS.TEXT.LIGHT,
   },
   markAllButton: {
@@ -440,54 +430,14 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.BACKGROUND.DEFAULT,
     borderRadius: BORDER_RADIUS.MD,
     padding: SPACING.MD,
-    marginBottom: SPACING.XL,
-  },
-  timerDisplay: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: COLORS.GRAY[900],
-    borderRadius: BORDER_RADIUS.MD,
-    paddingVertical: SPACING.LG,
-    marginBottom: SPACING.MD,
-  },
-  timerText: {
-    fontSize: 48,
-    fontWeight: '700',
-    color: COLORS.TEXT.LIGHT,
-    fontVariant: ['tabular-nums'],
-  },
-  timerControls: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  timerButton: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: SPACING.MD,
-    width: '45%',
-    backgroundColor: COLORS.PRIMARY,
-    borderRadius: BORDER_RADIUS.MD,
-  },
-  buttonText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.TEXT.LIGHT,
-    marginTop: SPACING.XS,
   },
   modalContent: {
     padding: SPACING.MD,
   },
   modalText: {
-    fontSize: 16,
-    color: COLORS.TEXT.LIGHT,
-    marginBottom: SPACING.SM,
-    textAlign: 'center',
-  },
-  modalSubtext: {
-    fontSize: 14,
-    color: COLORS.GRAY[400],
+    ...TEXT_VARIANT.bodyDefault,
+    color: COLORS.TEXT.DEFAULT,
     marginBottom: SPACING.LG,
-    textAlign: 'center',
   },
   modalButtons: {
     flexDirection: 'row',
@@ -495,8 +445,25 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     flex: 1,
+    paddingVertical: SPACING.SM,
+    borderRadius: 8,
+    alignItems: 'center',
     marginHorizontal: SPACING.XS,
-  }
+  },
+  cancelButton: {
+    backgroundColor: COLORS.GRAY[700],
+  },
+  cancelButtonText: {
+    ...TEXT_VARIANT.labelDefault,
+    color: COLORS.TEXT.LIGHT,
+  },
+  deleteButton: {
+    backgroundColor: COLORS.FEEDBACK.ERROR,
+  },
+  deleteButtonText: {
+    ...TEXT_VARIANT.labelDefault,
+    color: COLORS.TEXT.LIGHT,
+  },
 });
 
 export default ExerciseDetailScreen; 

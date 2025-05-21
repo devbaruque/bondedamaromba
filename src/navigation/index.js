@@ -10,6 +10,7 @@ import RegisterScreen from '../screens/auth/RegisterScreen';
 import WorkoutSelectionScreen from '../screens/workouts/WorkoutSelectionScreen';
 import ExerciseListScreen from '../screens/workouts/ExerciseListScreen';
 import AddExerciseScreen from '../screens/workouts/AddExerciseScreen';
+import EditExerciseScreen from '../screens/workouts/EditExerciseScreen';
 import ExerciseDetailScreen from '../screens/workouts/ExerciseDetailScreen';
 import LoadingScreen from '../screens/LoadingScreen';
 
@@ -64,6 +65,11 @@ const AppNavigator = () => {
         name="AddExercise" 
         component={AddExerciseScreen}
         options={{ title: "Novo Exercício" }}
+      />
+      <Stack.Screen 
+        name="EditExercise" 
+        component={EditExerciseScreen}
+        options={{ title: "Editar Exercício" }}
       />
       <Stack.Screen 
         name="ExerciseDetail" 

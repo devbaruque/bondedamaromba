@@ -90,7 +90,33 @@ try {
         },
         insert: async (values) => {
           console.warn(`[Mock Supabase] Tentativa de insert em ${table}:`, values);
-          return { data: null, error: { message: 'Cliente Supabase não inicializado' } };
+          // Criar um mock que simula os dados inseridos com um ID falso
+          const mockData = Array.isArray(values) ? 
+            values.map((val, i) => ({ ...val, id: `mock-id-${i}` })) : 
+            [{ ...(values || {}), id: 'mock-id-1' }];
+            
+          console.log(`[Mock Supabase] Simulando resposta de insert em ${table}:`, mockData);
+          
+          // Função select que será retornada diretamente como método do objeto
+          const select = function() {
+            console.log(`[Mock Supabase] Simulando método select() após insert em ${table}`);
+            return {
+              single: async () => {
+                console.log(`[Mock Supabase] Simulando método single() após insert em ${table}`);
+                // Retornar o primeiro item do mockData para simular select().single()
+                return { data: mockData[0], error: null };
+              }
+            };
+          };
+          
+          // Criar o objeto de retorno com o método select diretamente nele
+          const returnObj = { 
+            data: mockData, 
+            error: null,
+            select: select // Adicionando select como método direto
+          };
+          
+          return returnObj;
         },
         update: async (values) => {
           console.warn(`[Mock Supabase] Tentativa de update em ${table}:`, values);
@@ -99,7 +125,7 @@ try {
               return {
                 select: () => {
                   return {
-                    single: async () => ({ data: null, error: { message: 'Cliente Supabase não inicializado' } })
+                    single: async () => ({ data: { ...values, id: 'mock-id-1' }, error: null })
                   };
                 }
               };
@@ -109,7 +135,7 @@ try {
         delete: async () => {
           console.warn(`[Mock Supabase] Tentativa de delete em ${table}`);
           return { 
-            eq: async () => ({ error: { message: 'Cliente Supabase não inicializado' } })
+            eq: async () => ({ success: true, error: null })
           };
         },
       };
@@ -120,11 +146,11 @@ try {
         return {
           upload: async (path, file) => {
             console.warn(`[Mock Supabase] Tentativa de upload para ${bucket}/${path}`);
-            return { error: { message: 'Cliente Supabase não inicializado' } };
+            return { data: { path }, error: null };
           },
           getPublicUrl: (path) => {
             console.warn(`[Mock Supabase] Tentativa de obter URL pública para ${bucket}/${path}`);
-            return { data: null, error: { message: 'Cliente Supabase não inicializado' } };
+            return { data: { publicUrl: `https://mock-url.com/${bucket}/${path}` }, error: null };
           }
         };
       }

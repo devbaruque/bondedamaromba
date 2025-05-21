@@ -4,8 +4,8 @@ import { Formik } from 'formik';
 import * as Yup from 'yup';
 import * as ImagePicker from 'expo-image-picker';
 import { COLORS, SPACING, TEXT_VARIANT, BORDER_RADIUS } from '../../design';
-import { Button, Input } from '../../components/ui';
-import { createExercise, uploadExerciseImage } from '../../services';
+import { Button, Input, Modal } from '../../components/ui';
+import { updateExercise, uploadExerciseImage, deleteExerciseImage } from '../../services';
 import { Ionicons } from '@expo/vector-icons';
 
 const validationSchema = Yup.object().shape({
@@ -15,20 +15,22 @@ const validationSchema = Yup.object().shape({
   rest_time: Yup.number().required('Tempo de descanso é obrigatório').min(0, 'Tempo de descanso deve ser positivo'),
 });
 
-const AddExerciseScreen = ({ route, navigation }) => {
-  const { workoutId } = route.params;
+const EditExerciseScreen = ({ route, navigation }) => {
+  const { exercise } = route.params;
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [tempImages, setTempImages] = useState([]);
   const [imageLoading, setImageLoading] = useState(false);
+  const [images, setImages] = useState(exercise.exercise_images || []);
+  const [showImageDeleteModal, setShowImageDeleteModal] = useState(false);
+  const [selectedImageId, setSelectedImageId] = useState(null);
 
   // Configurando o header ao montar o componente
   useEffect(() => {
     navigation.setOptions({
-      title: 'Novo Exercício',
+      title: 'Editar Exercício',
       headerRight: () => (
         <TouchableOpacity 
           style={styles.headerButton}
-          onPress={handleAddTempImage}
+          onPress={() => handleAddImage()}
           disabled={imageLoading}
         >
           <Ionicons name="camera" size={24} color={COLORS.TEXT.LIGHT} />
@@ -51,14 +53,12 @@ const AddExerciseScreen = ({ route, navigation }) => {
     return true;
   };
 
-  // Adicionar imagem temporária
-  const handleAddTempImage = async () => {
+  // Adicionar uma nova imagem
+  const handleAddImage = async () => {
     const hasPermission = await requestMediaPermissions();
     if (!hasPermission) return;
 
     try {
-      setImageLoading(true);
-      
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -67,39 +67,81 @@ const AddExerciseScreen = ({ route, navigation }) => {
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
+        setImageLoading(true);
+        
+        // Preparar objeto de arquivo
         const selectedAsset = result.assets[0];
         const fileName = selectedAsset.uri.split('/').pop();
         
-        // Criar objeto de arquivo temporário
         const fileObject = {
           uri: selectedAsset.uri,
           name: fileName,
           type: `image/${fileName.split('.').pop()}`
         };
         
-        // Adicionar à lista temporária
-        setTempImages(current => [...current, fileObject]);
+        // Fazer upload da imagem
+        const { data, error } = await uploadExerciseImage(fileObject, exercise.id);
+        
+        if (error) {
+          Alert.alert('Erro', 'Não foi possível fazer o upload da imagem.');
+        } else if (data) {
+          // Adicionar nova imagem à lista
+          setImages(current => [...current, {
+            id: data.id,
+            image_url: data.url,
+            order_index: data.order_index
+          }]);
+          
+          Alert.alert('Sucesso', 'Imagem adicionada com sucesso!');
+        }
       }
     } catch (error) {
-      console.error('Erro ao selecionar imagem:', error);
-      Alert.alert('Erro', 'Ocorreu um erro ao selecionar a imagem.');
+      console.error('Erro ao selecionar/enviar imagem:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao processar a imagem.');
     } finally {
       setImageLoading(false);
     }
   };
 
-  // Remover imagem temporária
-  const handleRemoveTempImage = (index) => {
-    setTempImages(current => current.filter((_, i) => i !== index));
+  // Confirmar exclusão de imagem
+  const confirmDeleteImage = (imageId) => {
+    setSelectedImageId(imageId);
+    setShowImageDeleteModal(true);
   };
 
+  // Excluir imagem
+  const handleDeleteImage = async () => {
+    if (!selectedImageId) return;
+    
+    try {
+      setImageLoading(true);
+      
+      const { error } = await deleteExerciseImage(selectedImageId);
+      
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível excluir a imagem.');
+      } else {
+        // Remover imagem da lista
+        setImages(current => current.filter(img => img.id !== selectedImageId));
+        Alert.alert('Sucesso', 'Imagem excluída com sucesso!');
+      }
+    } catch (error) {
+      console.error('Erro ao excluir imagem:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao excluir a imagem.');
+    } finally {
+      setImageLoading(false);
+      setShowImageDeleteModal(false);
+      setSelectedImageId(null);
+    }
+  };
+
+  // Submeter formulário de edição
   const handleSubmit = async (values) => {
     try {
       setIsSubmitting(true);
 
       // Preparar dados para envio
       const exerciseData = {
-        workout_plan_id: workoutId,
         name: values.name,
         sets: parseInt(values.sets),
         repetitions: parseInt(values.repetitions),
@@ -107,75 +149,20 @@ const AddExerciseScreen = ({ route, navigation }) => {
         notes: values.notes || null,
       };
 
-      console.log('Enviando dados do exercício:', exerciseData);
+      // Atualizar exercício
+      const { data, error } = await updateExercise(exercise.id, exerciseData);
 
-      // Criar o exercício
-      const response = await createExercise(exerciseData);
-      const { data: createdExercise, error: exerciseError } = response || {};
-
-      console.log('Resposta da criação do exercício:', { response, createdExercise, exerciseError });
-
-      // Se houver um erro explícito, mostramos o erro
-      if (exerciseError) {
-        console.error('Erro explícito ao criar exercício:', exerciseError);
-        Alert.alert('Erro', 'Não foi possível adicionar o exercício: ' + exerciseError);
+      if (error) {
+        Alert.alert('Erro', 'Não foi possível atualizar o exercício.');
         return;
       }
 
-      // Se não há dados, algo deu errado
-      if (!createdExercise) {
-        console.error('Exercício não foi criado (nenhum dado retornado)');
-        Alert.alert('Erro', 'Não foi possível adicionar o exercício (nenhum dado retornado).');
-        return;
-      }
-
-      console.log('Exercício criado com sucesso:', createdExercise);
-
-      // Se houver imagens temporárias, fazer upload após criar o exercício
-      let uploadSuccessful = true;
-      if (tempImages.length > 0 && createdExercise.id) {
-        // Informar o usuário que o exercício foi criado e estamos fazendo upload das imagens
-        Alert.alert('Sucesso', 'Exercício criado! Fazendo upload das imagens...');
-        
-        // Upload de cada imagem
-        for (const imageFile of tempImages) {
-          try {
-            console.log('Enviando imagem para o exercício:', {
-              exerciseId: createdExercise.id,
-              fileName: imageFile.name
-            });
-            
-            const { data: uploadData, error: uploadError } = await uploadExerciseImage(imageFile, createdExercise.id);
-            
-            if (uploadError) {
-              console.error('Erro ao fazer upload de imagem:', uploadError);
-              uploadSuccessful = false;
-            } else {
-              console.log('Upload de imagem concluído:', uploadData);
-            }
-          } catch (uploadError) {
-            console.error('Exceção ao fazer upload de imagem:', uploadError);
-            uploadSuccessful = false;
-          }
-        }
-        
-        // Mensagem final sobre o upload das imagens, se necessário
-        if (!uploadSuccessful) {
-          Alert.alert(
-            'Atenção',
-            'O exercício foi criado, mas houve problemas com o upload de algumas imagens.'
-          );
-        }
-      } else {
-        // Se não há imagens para upload, apenas avisamos que o exercício foi criado
-        Alert.alert('Sucesso', 'Exercício adicionado com sucesso!');
-      }
-
-      // Voltar para a lista de exercícios
+      // Voltar para a tela de detalhes
       navigation.goBack();
+      Alert.alert('Sucesso', 'Exercício atualizado com sucesso!');
     } catch (error) {
-      console.error('Erro ao adicionar exercício:', error);
-      Alert.alert('Erro', 'Ocorreu um erro ao adicionar o exercício: ' + (error.message || error));
+      console.error('Erro ao atualizar exercício:', error);
+      Alert.alert('Erro', 'Ocorreu um erro ao atualizar o exercício.');
     } finally {
       setIsSubmitting(false);
     }
@@ -183,21 +170,20 @@ const AddExerciseScreen = ({ route, navigation }) => {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Imagens temporárias */}
-      {tempImages.length > 0 && (
+      {/* Carrossel de imagens */}
+      {images.length > 0 && (
         <View style={styles.imagesContainer}>
-          <Text style={styles.imagesTitle}>Imagens selecionadas</Text>
           <ScrollView 
             horizontal 
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.imagesScroll}
           >
-            {tempImages.map((img, index) => (
-              <View key={index} style={styles.imageWrapper}>
-                <Image source={{ uri: img.uri }} style={styles.imageItem} />
+            {images.map((img) => (
+              <View key={img.id} style={styles.imageWrapper}>
+                <Image source={{ uri: img.image_url }} style={styles.imageItem} />
                 <TouchableOpacity 
                   style={styles.deleteImageButton}
-                  onPress={() => handleRemoveTempImage(index)}
+                  onPress={() => confirmDeleteImage(img.id)}
                 >
                   <Ionicons name="close-circle" size={26} color={COLORS.FEEDBACK.ERROR} />
                 </TouchableOpacity>
@@ -215,8 +201,15 @@ const AddExerciseScreen = ({ route, navigation }) => {
         </View>
       )}
 
+      {/* Formulário de edição */}
       <Formik
-        initialValues={{ name: '', sets: '3', repetitions: '12', rest_time: '60', notes: '' }}
+        initialValues={{ 
+          name: exercise.name || '', 
+          sets: String(exercise.sets || 3), 
+          repetitions: String(exercise.repetitions || 12), 
+          rest_time: String(exercise.rest_time || 60), 
+          notes: exercise.notes || '' 
+        }}
         validationSchema={validationSchema}
         onSubmit={handleSubmit}
       >
@@ -276,7 +269,7 @@ const AddExerciseScreen = ({ route, navigation }) => {
             />
 
             <Button
-              title="Adicionar Exercício"
+              title="Salvar Alterações"
               onPress={handleSubmit}
               disabled={isSubmitting}
               loading={isSubmitting}
@@ -286,6 +279,36 @@ const AddExerciseScreen = ({ route, navigation }) => {
           </View>
         )}
       </Formik>
+
+      {/* Modal de confirmação de exclusão de imagem */}
+      <Modal
+        visible={showImageDeleteModal}
+        onClose={() => setShowImageDeleteModal(false)}
+        title="Excluir Imagem"
+      >
+        <View style={styles.modalContent}>
+          <Text style={styles.modalText}>
+            Tem certeza que deseja excluir esta imagem? Esta ação não pode ser desfeita.
+          </Text>
+          
+          <View style={styles.modalButtons}>
+            <Button
+              title="Cancelar"
+              onPress={() => setShowImageDeleteModal(false)}
+              variant="outline"
+              style={styles.modalButton}
+            />
+            <Button
+              title="Excluir"
+              onPress={handleDeleteImage}
+              variant="danger"
+              style={styles.modalButton}
+              loading={imageLoading}
+              disabled={imageLoading}
+            />
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -314,11 +337,6 @@ const styles = StyleSheet.create({
   },
   imagesContainer: {
     marginBottom: SPACING.MD,
-  },
-  imagesTitle: {
-    ...TEXT_VARIANT.labelDefault,
-    color: COLORS.TEXT.LIGHT,
-    marginBottom: SPACING.SM,
   },
   imagesScroll: {
     paddingHorizontal: SPACING.XS,
@@ -352,6 +370,22 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT.LIGHT,
     marginLeft: SPACING.SM,
   },
+  modalContent: {
+    padding: SPACING.SM,
+  },
+  modalText: {
+    ...TEXT_VARIANT.bodyDefault,
+    color: COLORS.TEXT.DEFAULT,
+    marginBottom: SPACING.MD,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  modalButton: {
+    flex: 1,
+    marginHorizontal: SPACING.XS,
+  },
 });
 
-export default AddExerciseScreen; 
+export default EditExerciseScreen; 
