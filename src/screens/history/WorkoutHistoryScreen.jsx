@@ -10,23 +10,12 @@ import { format, parseISO, isValid, isToday, isSameDay,
   addDays, subDays, isSameMonth, addWeeks, subWeeks, addMonths, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { 
-  Surface, Card, Chip, Divider, ProgressBar, 
+  Card, 
   SegmentedButtons, IconButton, Button
 } from 'react-native-paper';
 
 import { COLORS, SPACING, BORDER_RADIUS } from '../../design';
 import { getWorkoutHistory, deleteWorkoutSession, getWorkoutSessionDetails } from '../../services';
-
-// Definição dos grupos musculares e mapeamento de exercícios
-const MUSCLE_GROUPS = {
-  CHEST: { name: 'Peito', color: '#F44336', exercises: ['supino', 'crucifixo', 'peck deck', 'crossover'] },
-  BACK: { name: 'Costas', color: '#2196F3', exercises: ['remada', 'pull down', 'puxada', 'barra', 'pullover'] },
-  LEGS: { name: 'Pernas', color: '#4CAF50', exercises: ['leg press', 'agachamento', 'extensora', 'flexora', 'panturrilha', 'stiff'] },
-  SHOULDERS: { name: 'Ombros', color: '#9C27B0', exercises: ['desenvolvimento', 'elevação', 'lateral', 'frontal'] },
-  ARMS: { name: 'Braços', color: '#FF9800', exercises: ['rosca', 'tríceps', 'bíceps', 'martelo', 'francês', 'testa'] },
-  ABS: { name: 'Abdômen', color: '#607D8B', exercises: ['abdominal', 'infra', 'oblíquo', 'prancha'] },
-  OTHER: { name: 'Outros', color: '#795548', exercises: [] }
-};
 
 const WorkoutHistoryScreen = ({ navigation }) => {
   // Estados principais
@@ -37,8 +26,6 @@ const WorkoutHistoryScreen = ({ navigation }) => {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [viewMode, setViewMode] = useState('week');
   const [selectedExerciseDetails, setSelectedExerciseDetails] = useState(null);
-  const [periodVolume, setPeriodVolume] = useState(0);
-  const [muscleGroupsData, setMuscleGroupsData] = useState({});
   
   // Estados para navegação de datas
   const [currentDays, setCurrentDays] = useState([]);
@@ -123,19 +110,6 @@ const WorkoutHistoryScreen = ({ navigation }) => {
         console.log('Nenhum treino encontrado no período selecionado');
         setHistoryData([]);
         setFilteredHistory([]);
-        setPeriodVolume(0);
-        setMuscleGroupsData(
-          Object.keys(MUSCLE_GROUPS).reduce((acc, key) => {
-            acc[key] = { 
-              volume: 0, 
-              name: MUSCLE_GROUPS[key].name,
-              color: MUSCLE_GROUPS[key].color,
-              count: 0,
-              percentage: 0
-            };
-            return acc;
-          }, {})
-        );
         return;
       }
       
@@ -144,10 +118,6 @@ const WorkoutHistoryScreen = ({ navigation }) => {
       
       // Filtrar para o dia selecionado
       filterByDate(selectedDate, data);
-      
-      // Calcular métricas
-      calculateTotalVolume(data);
-      analyzeVolumeByMuscleGroup(data);
       
     } catch (error) {
       console.error('Erro ao buscar histórico:', error);
@@ -187,160 +157,6 @@ const WorkoutHistoryScreen = ({ navigation }) => {
     
     console.log(`Encontrados ${filtered.length} treinos para o dia selecionado`);
     setFilteredHistory(filtered);
-  };
-
-  // Calcular o volume total de treino para o período
-  const calculateTotalVolume = (data) => {
-    if (!data || data.length === 0) {
-      console.log('Nenhum dado para calcular volume');
-      setPeriodVolume(0);
-      return;
-    }
-    
-    console.log(`Calculando volume total para ${data.length} sessões`);
-    let totalVolume = 0;
-    let processedExercises = 0;
-    let skippedExercises = 0;
-    
-    data.forEach(session => {
-      if (!session.exercise_logs || session.exercise_logs.length === 0) {
-        console.log(`Sessão ${session.id} sem logs de exercícios`);
-        return;
-      }
-      
-      session.exercise_logs.forEach(log => {
-        // Verificar se temos os dados necessários
-        if (!log.exercises) {
-          skippedExercises++;
-          return;
-        }
-        
-        if (!log.completed) {
-          // Não contar exercícios não concluídos
-          return;
-        }
-        
-        // Volume = séries completadas x repetições
-        const sets = log.completed_sets || 0;
-        const reps = log.exercises.repetitions || 0;
-        const exerciseVolume = sets * reps;
-        
-        if (exerciseVolume > 0) {
-          totalVolume += exerciseVolume;
-          processedExercises++;
-        }
-      });
-    });
-    
-    console.log(`Volume total calculado: ${totalVolume} (${processedExercises} exercícios processados, ${skippedExercises} ignorados)`);
-    setPeriodVolume(totalVolume);
-  };
-
-  // Analisar volume por grupo muscular
-  const analyzeVolumeByMuscleGroup = (data) => {
-    if (!data || data.length === 0) {
-      console.log('Nenhum dado para analisar volume por grupo muscular');
-      
-      // Inicializar todos os grupos com zero
-      const emptyGroups = Object.keys(MUSCLE_GROUPS).reduce((acc, key) => {
-        acc[key] = { 
-          volume: 0, 
-          name: MUSCLE_GROUPS[key].name,
-          color: MUSCLE_GROUPS[key].color,
-          count: 0,
-          percentage: 0
-        };
-        return acc;
-      }, {});
-      
-      setMuscleGroupsData(emptyGroups);
-      return;
-    }
-    
-    console.log(`Analisando volume por grupo muscular para ${data.length} sessões`);
-    const muscleGroups = {};
-    
-    // Inicializar todos os grupos com zero
-    Object.keys(MUSCLE_GROUPS).forEach(key => {
-      muscleGroups[key] = { 
-        volume: 0, 
-        name: MUSCLE_GROUPS[key].name,
-        color: MUSCLE_GROUPS[key].color,
-        count: 0
-      };
-    });
-    
-    let totalProcessedExercises = 0;
-    let totalSkippedExercises = 0;
-    
-    data.forEach(session => {
-      if (!session.exercise_logs || session.exercise_logs.length === 0) {
-        return;
-      }
-      
-      session.exercise_logs.forEach(log => {
-        if (!log.exercises || !log.completed) {
-          totalSkippedExercises++;
-          return;
-        }
-        
-        const exerciseName = log.exercises.name.toLowerCase();
-        const sets = log.completed_sets || 0;
-        const reps = log.exercises.repetitions || 0;
-        const exerciseVolume = sets * reps;
-        
-        if (exerciseVolume <= 0) {
-          return;
-        }
-        
-        totalProcessedExercises++;
-        
-        // Determinar grupo muscular
-        let muscleGroup = 'OTHER';
-        
-        Object.keys(MUSCLE_GROUPS).forEach(key => {
-          if (MUSCLE_GROUPS[key].exercises.some(term => 
-            exerciseName.includes(term))) {
-            muscleGroup = key;
-          }
-        });
-        
-        // Somar ao volume do grupo muscular
-        muscleGroups[muscleGroup].volume += exerciseVolume;
-        muscleGroups[muscleGroup].count += 1;
-      });
-    });
-    
-    // Calcular o total para determinar porcentagens
-    let totalVolume = 0;
-    Object.keys(muscleGroups).forEach(key => {
-      totalVolume += muscleGroups[key].volume;
-    });
-    
-    // Adicionar percentagens
-    Object.keys(muscleGroups).forEach(key => {
-      muscleGroups[key].percentage = totalVolume > 0 
-        ? (muscleGroups[key].volume / totalVolume) * 100 
-        : 0;
-    });
-    
-    // Listar os top 3 grupos musculares
-    const topGroups = Object.keys(muscleGroups)
-      .filter(key => muscleGroups[key].volume > 0)
-      .sort((a, b) => muscleGroups[b].volume - muscleGroups[a].volume)
-      .slice(0, 3);
-      
-    if (topGroups.length > 0) {
-      console.log('Top grupos musculares:');
-      topGroups.forEach(key => {
-        console.log(`- ${muscleGroups[key].name}: ${muscleGroups[key].volume} (${Math.round(muscleGroups[key].percentage)}%)`);
-      });
-    } else {
-      console.log('Nenhum grupo muscular com volume');
-    }
-    
-    console.log(`Análise concluída: ${totalProcessedExercises} exercícios processados, ${totalSkippedExercises} ignorados`);
-    setMuscleGroupsData(muscleGroups);
   };
 
   // Navegar para o período anterior
@@ -469,10 +285,6 @@ const WorkoutHistoryScreen = ({ navigation }) => {
                 const updatedFiltered = filteredHistory.filter(session => session.id !== sessionId);
                 setFilteredHistory(updatedFiltered);
                 
-                // Recalcular métricas
-                calculateTotalVolume(updatedHistory);
-                analyzeVolumeByMuscleGroup(updatedHistory);
-                
                 // Mostrar feedback de sucesso
                 Alert.alert('Sucesso', 'Sessão excluída com sucesso.');
               } else {
@@ -504,63 +316,6 @@ const WorkoutHistoryScreen = ({ navigation }) => {
   const onRefresh = () => {
     setRefreshing(true);
     updateDateRange();
-  };
-
-  // Calcular o volume de treino para uma sessão específica
-  const calculateSessionVolume = (session) => {
-    if (!session) {
-      console.warn('calculateSessionVolume - Sessão indefinida');
-      return 0;
-    }
-    
-    if (!session.exercise_logs || !Array.isArray(session.exercise_logs) || session.exercise_logs.length === 0) {
-      console.log('calculateSessionVolume - Sem logs de exercícios para a sessão:', session.id);
-      return 0;
-    }
-    
-    let volume = 0;
-    let processedExercises = 0;
-    let skippedExercises = 0;
-    
-    session.exercise_logs.forEach(log => {
-      if (!log || !log.exercises) {
-        skippedExercises++;
-      return;
-    }
-    
-      if (!log.completed) {
-        // Exercício não concluído
-        return;
-      }
-      
-      const sets = log.completed_sets || 0;
-      const reps = log.exercises.repetitions || 0;
-      
-      if (sets > 0 && reps > 0) {
-        const exerciseVolume = sets * reps;
-        volume += exerciseVolume;
-        processedExercises++;
-      }
-    });
-    
-    if (processedExercises === 0 && skippedExercises > 0) {
-      console.warn(`calculateSessionVolume - Sessão ${session.id}: ${skippedExercises} exercícios ignorados por falta de dados`);
-    }
-    
-    return volume;
-  };
-
-  // Contar quantas vezes um treino foi feito no período
-  const getWorkoutFrequency = (workoutPlanId) => {
-    let count = 0;
-    
-    historyData.forEach(session => {
-      if (session.workout_plan_id === workoutPlanId) {
-        count++;
-      }
-    });
-    
-    return count;
   };
 
   // Renderizar um item do seletor de dias no modo semanal
@@ -628,11 +383,18 @@ const WorkoutHistoryScreen = ({ navigation }) => {
     });
     
     const workoutName = item.workout_plans?.name || 'Treino sem nome';
-    const frequency = getWorkoutFrequency(item.workout_plan_id);
-    const volume = calculateSessionVolume(item);
     const startTime = item.start_time ? format(parseISO(item.start_time), 'HH:mm') : '';
     
-      return (
+    // Calcular a duração do treino
+    let duration = 'Duração não disponível';
+    if (item.start_time && item.end_time) {
+      const start = parseISO(item.start_time);
+      const end = parseISO(item.end_time);
+      const durationMinutes = Math.round((end - start) / (1000 * 60));
+      duration = `${durationMinutes} minutos`;
+    }
+    
+    return (
       <Card 
         style={styles.workoutCard} 
         onPress={() => {
@@ -646,16 +408,7 @@ const WorkoutHistoryScreen = ({ navigation }) => {
               <Text style={styles.workoutName}>{workoutName}</Text>
               <Text style={styles.workoutTime}>{startTime}</Text>
             </View>
-            <Chip mode="outlined" style={styles.frequencyChip}>
-              {frequency}x {viewMode === 'week' ? 'semana' : 'mês'}
-            </Chip>
-          </View>
-          
-          <Divider style={styles.divider} />
-          
-          <View style={styles.volumeContainer}>
-            <Text style={styles.volumeLabel}>Volume total:</Text>
-            <Text style={styles.volumeValue}>{volume}</Text>
+            <Text style={styles.durationText}>{duration}</Text>
           </View>
           
           <View style={styles.workoutActions}>
@@ -664,7 +417,6 @@ const WorkoutHistoryScreen = ({ navigation }) => {
               compact 
               onPress={() => {
                 console.log('renderWorkoutItem - Botão Detalhes clicado, ID:', item.id);
-                // Solução alternativa: tentar com carregamento direto em caso de falha
                 handleViewSessionDetails(item.id).catch(() => {
                   console.log('renderWorkoutItem - Tentando navegação direta como fallback');
                   navigation.navigate('WorkoutSessionDetails', { 
@@ -683,10 +435,10 @@ const WorkoutHistoryScreen = ({ navigation }) => {
             >
               Excluir
             </Button>
-        </View>
+          </View>
         </Card.Content>
       </Card>
-      );
+    );
   };
 
     return (
@@ -733,43 +485,6 @@ const WorkoutHistoryScreen = ({ navigation }) => {
         contentContainerStyle={styles.daysList}
       />
       
-      {/* Resumo de métricas */}
-      <Card style={styles.metricsCard}>
-        <Card.Content>
-          <Text style={styles.metricsTitle}>
-            Volume Total {viewMode === 'week' ? 'Semanal' : 'Mensal'}
-          </Text>
-          <Text style={styles.metricsValue}>{periodVolume}</Text>
-          
-          {/* Visualização de volume por grupo muscular */}
-          <View style={styles.muscleGroupsContainer}>
-            {Object.keys(muscleGroupsData)
-              .filter(key => muscleGroupsData[key].volume > 0)
-              .sort((a, b) => muscleGroupsData[b].volume - muscleGroupsData[a].volume)
-              .slice(0, 3)  // Top 3 grupos musculares
-              .map((key) => (
-                <View key={key} style={styles.muscleGroupItem}>
-                  <View style={styles.muscleGroupHeader}>
-                    <View style={styles.muscleGroupNameRow}>
-                      <View 
-                        style={[styles.muscleGroupDot, { backgroundColor: muscleGroupsData[key].color }]} 
-                      />
-                      <Text style={styles.muscleGroupName}>{muscleGroupsData[key].name}</Text>
-                    </View>
-                    <Text style={styles.muscleGroupVolume}>{muscleGroupsData[key].volume}</Text>
-                  </View>
-                  <ProgressBar 
-                    progress={muscleGroupsData[key].percentage / 100} 
-                    color={muscleGroupsData[key].color}
-                    style={styles.muscleGroupProgress}
-                  />
-                </View>
-              ))
-            }
-          </View>
-        </Card.Content>
-      </Card>
-      
       {/* Lista de treinos do dia */}
       {isLoading && !refreshing ? (
         <View style={styles.centerContainer}>
@@ -779,8 +494,8 @@ const WorkoutHistoryScreen = ({ navigation }) => {
       <FlatList
         data={filteredHistory}
         keyExtractor={(item) => item.id}
-          renderItem={renderWorkoutItem}
-          contentContainerStyle={styles.workoutsList}
+        renderItem={renderWorkoutItem}
+        contentContainerStyle={styles.workoutsList}
         refreshControl={
           <RefreshControl 
             refreshing={refreshing} 
@@ -891,55 +606,6 @@ const styles = StyleSheet.create({
   selectedWorkoutIndicator: {
     backgroundColor: COLORS.TEXT.LIGHT,
   },
-  metricsCard: {
-    margin: SPACING.MD,
-    backgroundColor: COLORS.BACKGROUND.LIGHT,
-  },
-  metricsTitle: {
-    fontSize: 14,
-    color: COLORS.GRAY[400],
-  },
-  metricsValue: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: COLORS.TEXT.LIGHT,
-    marginVertical: SPACING.SM,
-  },
-  muscleGroupsContainer: {
-    marginTop: SPACING.SM,
-  },
-  muscleGroupItem: {
-    marginBottom: SPACING.SM,
-  },
-  muscleGroupHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  muscleGroupNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  muscleGroupDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: SPACING.XS,
-  },
-  muscleGroupName: {
-    fontSize: 14,
-    color: COLORS.TEXT.LIGHT,
-  },
-  muscleGroupVolume: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.TEXT.LIGHT,
-  },
-  muscleGroupProgress: {
-    height: 6,
-    borderRadius: 3,
-  },
   workoutsList: {
     padding: SPACING.MD,
     paddingTop: 0,
@@ -963,27 +629,11 @@ const styles = StyleSheet.create({
     color: COLORS.GRAY[400],
     marginTop: 2,
   },
-  frequencyChip: {
-    backgroundColor: 'transparent',
-    borderColor: COLORS.PRIMARY,
-  },
-  divider: {
-    marginVertical: SPACING.SM,
-    backgroundColor: COLORS.GRAY[800],
-  },
-  volumeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  volumeLabel: {
+  durationText: {
     fontSize: 14,
-    color: COLORS.GRAY[400],
-  },
-  volumeValue: {
-    fontSize: 18,
     fontWeight: '600',
     color: COLORS.PRIMARY,
+    marginTop: 2,
   },
   workoutActions: {
     flexDirection: 'row',
