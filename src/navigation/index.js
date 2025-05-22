@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { View, TouchableOpacity, Modal, Text, StyleSheet } from 'react-native';
 
 import { useAuth } from '../contexts/AuthContext';
 
@@ -20,11 +21,134 @@ import WorkoutSessionDetailsScreen from '../screens/history/WorkoutSessionDetail
 import LoadingScreen from '../screens/LoadingScreen';
 
 // Cores do tema
-import { COLORS } from '../design';
+import { COLORS, SPACING, BORDER_RADIUS } from '../design';
 
 // Criando os navegadores
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+
+// Componente para o modal de confirmação de logout
+const LogoutConfirmationModal = ({ visible, onConfirm, onCancel }) => {
+  return (
+    <Modal
+      visible={visible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={onCancel}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <Text style={styles.modalTitle}>Deseja mesmo desconectar?</Text>
+          
+          <View style={styles.modalButtonsContainer}>
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalCancelButton]}
+              onPress={onCancel}
+            >
+              <Text style={styles.modalButtonText}>Não</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[styles.modalButton, styles.modalConfirmButton]}
+              onPress={onConfirm}
+            >
+              <Text style={styles.modalButtonText}>Sim</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// Componente personalizado para a barra de navegação
+const CustomTabBar = ({ state, descriptors, navigation }) => {
+  const [logoutModalVisible, setLogoutModalVisible] = useState(false);
+  const { signOut } = useAuth();
+
+  const handleLogout = async () => {
+    setLogoutModalVisible(false);
+    const { success, error } = await signOut();
+    
+    if (error) {
+      console.error('Erro ao fazer logout:', error);
+      // Aqui poderia mostrar um alerta de erro
+    }
+  };
+
+  return (
+    <View style={styles.tabBarContainer}>
+      {/* Modal de confirmação de logout */}
+      <LogoutConfirmationModal
+        visible={logoutModalVisible}
+        onConfirm={handleLogout}
+        onCancel={() => setLogoutModalVisible(false)}
+      />
+      
+      {/* Botões de navegação */}
+      <View style={styles.tabBar}>
+        {state.routes.map((route, index) => {
+          const { options } = descriptors[route.key];
+          const isFocused = state.index === index;
+
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name);
+            }
+          };
+
+          let iconName;
+          if (route.name === 'Treinos') {
+            iconName = isFocused ? 'barbell' : 'barbell-outline';
+          } else if (route.name === 'Histórico') {
+            iconName = isFocused ? 'calendar' : 'calendar-outline';
+          }
+
+          return (
+            <TouchableOpacity
+              key={index}
+              accessibilityRole="button"
+              accessibilityState={isFocused ? { selected: true } : {}}
+              onPress={onPress}
+              style={styles.tabButton}
+            >
+              <Ionicons
+                name={iconName}
+                size={24}
+                color={isFocused ? COLORS.PRIMARY : COLORS.GRAY[500]}
+              />
+              <Text style={[
+                styles.tabLabel,
+                { color: isFocused ? COLORS.PRIMARY : COLORS.GRAY[500] }
+              ]}>
+                {route.name}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+        
+        {/* Botão de logout */}
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={() => setLogoutModalVisible(true)}
+        >
+          <Ionicons
+            name="log-out-outline"
+            size={24}
+            color={COLORS.FEEDBACK.ERROR}
+          />
+          <Text style={styles.logoutText}>Sair</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
 
 // Navegador para rotas de autenticação
 const AuthNavigator = () => {
@@ -120,33 +244,10 @@ const HistoryNavigator = () => {
 const TabNavigator = () => {
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
+      screenOptions={{
         headerShown: false,
-        tabBarStyle: {
-          backgroundColor: COLORS.BACKGROUND.DEFAULT,
-          borderTopColor: COLORS.GRAY[800],
-          paddingTop: 5,
-          paddingBottom: 10,
-          height: 60,
-        },
-        tabBarActiveTintColor: COLORS.PRIMARY,
-        tabBarInactiveTintColor: COLORS.GRAY[500],
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName;
-
-          if (route.name === 'Treinos') {
-            iconName = focused ? 'barbell' : 'barbell-outline';
-          } else if (route.name === 'Histórico') {
-            iconName = focused ? 'calendar' : 'calendar-outline';
-          }
-
-          return <Ionicons name={iconName} size={size} color={color} />;
-        },
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '500',
-        }
-      })}
+      }}
+      tabBar={props => <CustomTabBar {...props} />}
     >
       <Tab.Screen name="Treinos" component={WorkoutsNavigator} />
       <Tab.Screen name="Histórico" component={HistoryNavigator} />
@@ -168,5 +269,87 @@ export const RootNavigator = () => {
     </NavigationContainer>
   );
 };
+
+// Estilos
+const styles = StyleSheet.create({
+  tabBarContainer: {
+    backgroundColor: COLORS.BACKGROUND.DEFAULT,
+    borderTopColor: COLORS.GRAY[800],
+    borderTopWidth: 1,
+  },
+  tabBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  tabButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 5,
+  },
+  tabLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  logoutButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 5,
+  },
+  logoutText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: COLORS.FEEDBACK.ERROR,
+    marginTop: 2,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    backgroundColor: COLORS.BACKGROUND.LIGHT,
+    borderRadius: BORDER_RADIUS.LG,
+    padding: SPACING.LG,
+    width: '80%',
+    maxWidth: 300,
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.TEXT.LIGHT,
+    marginBottom: SPACING.LG,
+    textAlign: 'center',
+  },
+  modalButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: SPACING.MD,
+    borderRadius: BORDER_RADIUS.MD,
+    alignItems: 'center',
+    marginHorizontal: SPACING.XS,
+  },
+  modalCancelButton: {
+    backgroundColor: COLORS.GRAY[700],
+  },
+  modalConfirmButton: {
+    backgroundColor: COLORS.FEEDBACK.ERROR,
+  },
+  modalButtonText: {
+    color: COLORS.TEXT.LIGHT,
+    fontWeight: '600',
+    fontSize: 16,
+  },
+});
 
 export default RootNavigator; 
