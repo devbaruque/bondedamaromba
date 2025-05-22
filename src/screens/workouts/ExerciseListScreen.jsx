@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, Alert, RefreshControl
+  ActivityIndicator, Alert, RefreshControl, Animated
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,7 @@ import {
 } from '../../services';
 import { Modal, Button } from '../../components/ui';
 import ExerciseCard from '../../components/features/ExerciseCard';
+import { useWorkoutTimer } from '../../contexts/WorkoutTimerContext';
 
 const ExerciseListScreen = ({ navigation, route }) => {
   const { workout } = route.params;
@@ -28,6 +29,18 @@ const ExerciseListScreen = ({ navigation, route }) => {
   const [completedSets, setCompletedSets] = useState({});
   const [activeSession, setActiveSession] = useState(null);
   const [isSessionActive, setIsSessionActive] = useState(false);
+  
+  // Acessar o contexto do timer
+  const { startTimer, finishWorkout, isActive: timerActive } = useWorkoutTimer();
+  
+  // Referência para o flatlist para poder rolar até os exercícios
+  const flatListRef = useRef(null);
+  
+  // State para controlar a animação de conclusão
+  const [animatingCompletion, setAnimatingCompletion] = useState(false);
+  
+  // Exercício sendo destacado durante a animação
+  const [highlightedExerciseId, setHighlightedExerciseId] = useState(null);
   
   // Configurar a navegação ao montar o componente
   useEffect(() => {
@@ -142,6 +155,11 @@ const ExerciseListScreen = ({ navigation, route }) => {
       console.log('Sessão iniciada com sucesso, ID:', response.data.id);
       setActiveSession(response.data);
       setIsSessionActive(true);
+      
+      // Iniciar o timer de treino - garantir que os parâmetros corretos são passados
+      console.log('Iniciando timer com nome:', workout.name);
+      startTimer(response.data.id, workout.name);
+      
       Alert.alert('Treino Iniciado', 'Seu treino foi iniciado! Marque os exercícios conforme for concluindo.');
       
     } catch (error) {
@@ -163,14 +181,58 @@ const ExerciseListScreen = ({ navigation, route }) => {
       setIsLoading(true);
       console.log('Finalizando sessão:', activeSession.id);
       
-      // Enviar logs de exercícios para o servidor
-      const logPromises = Object.keys(completedExercises).map(exerciseId => {
-        if (completedExercises[exerciseId]) {
-          const sets = completedSets[exerciseId] || 0;
-          console.log(`Registrando exercício ${exerciseId} com ${sets} séries`);
-          return logExerciseCompletion(activeSession.id, exerciseId, sets);
+      // Iniciar animação de marcação de exercícios
+      setAnimatingCompletion(true);
+      
+      // Marcar exercícios um por um com pequeno delay para efeito visual
+      const markExercisesSequentially = async () => {
+        const completed = {};
+        const sets = {};
+        
+        // Aumentar o tempo de pausa para cada exercício
+        const animationPause = 500; // 500ms para cada exercício
+        
+        for (let i = 0; i < exercises.length; i++) {
+          const exercise = exercises[i];
+          
+          // Destacar o exercício atual
+          setHighlightedExerciseId(exercise.id);
+          
+          // Rolar até o exercício atual
+          if (flatListRef.current) {
+            flatListRef.current.scrollToIndex({
+              index: i,
+              animated: true,
+              viewPosition: 0.5,
+            });
+          }
+          
+          // Marcar como completo
+          completed[exercise.id] = true;
+          sets[exercise.id] = completedSets[exercise.id] || exercise.sets || 1;
+          
+          // Atualizar estado para mostrar visual de conclusão
+          setCompletedExercises({...completed});
+          setCompletedSets({...sets});
+          
+          // Esperar um pouco para efeito visual
+          await new Promise(resolve => setTimeout(resolve, animationPause));
         }
-        return Promise.resolve();
+        
+        // Limpar o destaque ao finalizar
+        setHighlightedExerciseId(null);
+        setAnimatingCompletion(false);
+        return {completed, sets};
+      };
+      
+      // Executar a animação e esperar que termine
+      const {completed, sets} = await markExercisesSequentially();
+      
+      // Enviar logs de exercícios para o servidor
+      const logPromises = exercises.map(exercise => {
+        const exerciseSets = sets[exercise.id] || 1;
+        console.log(`Registrando exercício ${exercise.id} com ${exerciseSets} séries`);
+        return logExerciseCompletion(activeSession.id, exercise.id, exerciseSets);
       });
       
       try {
@@ -198,20 +260,8 @@ const ExerciseListScreen = ({ navigation, route }) => {
       setCompletedExercises({});
       setCompletedSets({});
       
-      Alert.alert(
-        'Treino Finalizado', 
-        'Seu treino foi registrado com sucesso!',
-        [
-          {
-            text: 'Ver Histórico',
-            onPress: () => navigation.navigate('Histórico'),
-          },
-          {
-            text: 'OK',
-            style: 'cancel',
-          }
-        ]
-      );
+      // Mostrar animação de parabéns
+      finishWorkout();
       
     } catch (error) {
       console.error('Erro ao finalizar sessão de treino:', error);
@@ -334,6 +384,7 @@ const ExerciseListScreen = ({ navigation, route }) => {
         onToggleComplete={() => handleToggleComplete(item.id)}
         onEdit={() => handleEditExercise(item)}
         onDelete={() => confirmDeleteExercise(item.id)}
+        isHighlighted={highlightedExerciseId === item.id}
       />
     );
   };
@@ -346,10 +397,11 @@ const ExerciseListScreen = ({ navigation, route }) => {
     
     return isSessionActive ? (
       <Button 
-        title="Finalizar Treino" 
+        title={animatingCompletion ? "Finalizando..." : "Finalizar Treino"} 
         variant="primary" 
         onPress={handleEndSession}
         style={styles.sessionButton}
+        disabled={animatingCompletion || isLoading}
       />
     ) : (
       <Button 
@@ -357,13 +409,14 @@ const ExerciseListScreen = ({ navigation, route }) => {
         variant="primary" 
         onPress={handleStartSession}
         style={styles.sessionButton}
+        disabled={isLoading}
       />
     );
   };
 
   // Renderizar o conteúdo principal
   const renderContent = () => {
-    if (isLoading && !refreshing) {
+    if (isLoading && !refreshing && !animatingCompletion) {
       return (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={COLORS.PRIMARY} />
@@ -396,6 +449,7 @@ const ExerciseListScreen = ({ navigation, route }) => {
 
     return (
       <FlatList
+        ref={flatListRef}
         data={exercises}
         keyExtractor={(item) => item.id}
         renderItem={renderExerciseItem}
@@ -410,6 +464,9 @@ const ExerciseListScreen = ({ navigation, route }) => {
           />
         }
         ListFooterComponent={renderSessionButton}
+        onScrollToIndexFailed={info => {
+          console.log('Falha ao rolar para o índice:', info);
+        }}
       />
     );
   };

@@ -22,4 +22,7 @@ config.resolver.extraNodeModules = {
   url: path.resolve(__dirname, './src/utils/urlPolyfill.js'),
 };
 
+// Adicionar suporte para arquivos JSON para animações Lottie
+config.resolver.assetExts.push('json');
+
 module.exports = config; 

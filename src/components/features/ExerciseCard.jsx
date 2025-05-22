@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, TEXT_VARIANT, BORDER_RADIUS } from '../../design';
 
@@ -12,6 +12,7 @@ import { COLORS, SPACING, TEXT_VARIANT, BORDER_RADIUS } from '../../design';
  * @param {function} props.onToggleComplete - Função para alternar estado de conclusão
  * @param {function} props.onEdit - Função chamada ao clicar em editar
  * @param {function} props.onDelete - Função chamada ao clicar em excluir
+ * @param {boolean} props.isHighlighted - Se o exercício está sendo destacado durante a marcação automática
  */
 const ExerciseCard = ({ 
   exercise, 
@@ -19,7 +20,8 @@ const ExerciseCard = ({
   isCompleted = false, 
   onToggleComplete,
   onEdit,
-  onDelete 
+  onDelete,
+  isHighlighted = false
 }) => {
   const hasImages = exercise.exercise_images && exercise.exercise_images.length > 0;
   
@@ -27,103 +29,154 @@ const ExerciseCard = ({
   const sortedImages = hasImages 
     ? [...exercise.exercise_images].sort((a, b) => a.order_index - b.order_index)
     : [];
+    
+  // Animação de destaque
+  const highlightAnim = useRef(new Animated.Value(0)).current;
+  
+  useEffect(() => {
+    if (isHighlighted) {
+      // Animar o destaque pulsando
+      Animated.sequence([
+        Animated.timing(highlightAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+        Animated.timing(highlightAnim, {
+          toValue: 0.5,
+          duration: 200,
+          useNativeDriver: false,
+        }),
+        Animated.timing(highlightAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: false,
+        })
+      ]).start();
+    } else {
+      // Resetar animação
+      highlightAnim.setValue(0);
+    }
+  }, [isHighlighted]);
+  
+  // Cores para a animação
+  const highlightBackground = highlightAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [COLORS.BACKGROUND.DEFAULT, COLORS.PRIMARY_LIGHT]
+  });
+  
+  // Definir estilos do container
+  const containerStyle = [
+    styles.container,
+    isCompleted && styles.completedContainer,
+    isHighlighted && { transform: [{ scale: 1.02 }] },
+    isHighlighted && { 
+      backgroundColor: highlightBackground,
+      borderWidth: 2,
+      borderColor: COLORS.PRIMARY,
+    }
+  ];
 
   return (
-    <TouchableOpacity 
-      style={[styles.container, isCompleted && styles.completedContainer]} 
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      {/* Imagens do exercício (se houver) */}
-      {hasImages && (
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          style={styles.imagesContainer}
-          contentContainerStyle={styles.imagesContent}
-        >
-          {sortedImages.map((image) => (
-            <Image
-              key={image.id}
-              source={{ uri: image.image_url }}
-              style={styles.image}
-              resizeMode="cover"
-            />
-          ))}
-        </ScrollView>
-      )}
-      
-      {/* Detalhes do exercício */}
-      <View style={styles.detailsContainer}>
-        <View style={styles.headerContainer}>
-          <Text style={styles.title} numberOfLines={1}>{exercise.name}</Text>
-          
-          {/* Botão de completar exercício */}
-          {onToggleComplete && (
-            <TouchableOpacity 
-              style={styles.completeButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                onToggleComplete(exercise.id);
-              }}
-            >
-              <Ionicons 
-                name={isCompleted ? "checkmark-circle" : "checkmark-circle-outline"} 
-                size={24} 
-                color={isCompleted ? COLORS.FEEDBACK.SUCCESS : COLORS.TEXT.LIGHT} 
+    <Animated.View style={containerStyle}>
+      <TouchableOpacity 
+        style={styles.touchable}
+        onPress={onPress}
+        activeOpacity={0.7}
+        disabled={isHighlighted}
+      >
+        {/* Imagens do exercício (se houver) */}
+        {hasImages && (
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={styles.imagesContainer}
+            contentContainerStyle={styles.imagesContent}
+          >
+            {sortedImages.map((image) => (
+              <Image
+                key={image.id}
+                source={{ uri: image.image_url }}
+                style={styles.image}
+                resizeMode="cover"
               />
-            </TouchableOpacity>
-          )}
-        </View>
-        
-        {/* Informações sobre séries, repetições, etc */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statsItem}>
-            <Ionicons name="repeat" size={16} color={COLORS.TEXT.MUTED} />
-            <Text style={styles.statsText}>{exercise.sets}x{exercise.repetitions}</Text>
-          </View>
-          
-          <View style={styles.statsItem}>
-            <Ionicons name="timer-outline" size={16} color={COLORS.TEXT.MUTED} />
-            <Text style={styles.statsText}>{exercise.rest_time}s</Text>
-          </View>
-        </View>
-        
-        {/* Notas do exercício (se houver) */}
-        {exercise.notes && (
-          <Text style={styles.notes} numberOfLines={2}>{exercise.notes}</Text>
+            ))}
+          </ScrollView>
         )}
         
-        {/* Botões de ação */}
-        <View style={styles.actionsContainer}>
-          {onEdit && (
-            <TouchableOpacity 
-              style={styles.actionButton}
-              onPress={(e) => {
-                e.stopPropagation();
-                onEdit(exercise);
-              }}
-            >
-              <Ionicons name="pencil" size={16} color={COLORS.TEXT.LIGHT} />
-              <Text style={styles.actionText}>Editar</Text>
-            </TouchableOpacity>
+        {/* Detalhes do exercício */}
+        <View style={styles.detailsContainer}>
+          <View style={styles.headerContainer}>
+            <Text style={styles.title} numberOfLines={1}>{exercise.name}</Text>
+            
+            {/* Botão de completar exercício */}
+            {onToggleComplete && (
+              <TouchableOpacity 
+                style={styles.completeButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onToggleComplete(exercise.id);
+                }}
+                disabled={isHighlighted}
+              >
+                <Ionicons 
+                  name={isCompleted ? "checkmark-circle" : "checkmark-circle-outline"} 
+                  size={24} 
+                  color={isCompleted ? COLORS.FEEDBACK.SUCCESS : COLORS.TEXT.LIGHT} 
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+          
+          {/* Informações sobre séries, repetições, etc */}
+          <View style={styles.statsContainer}>
+            <View style={styles.statsItem}>
+              <Ionicons name="repeat" size={16} color={COLORS.TEXT.MUTED} />
+              <Text style={styles.statsText}>{exercise.sets}x{exercise.repetitions}</Text>
+            </View>
+            
+            <View style={styles.statsItem}>
+              <Ionicons name="timer-outline" size={16} color={COLORS.TEXT.MUTED} />
+              <Text style={styles.statsText}>{exercise.rest_time}s</Text>
+            </View>
+          </View>
+          
+          {/* Notas do exercício (se houver) */}
+          {exercise.notes && (
+            <Text style={styles.notes} numberOfLines={2}>{exercise.notes}</Text>
           )}
           
-          {onDelete && (
-            <TouchableOpacity 
-              style={[styles.actionButton, styles.deleteButton]}
-              onPress={(e) => {
-                e.stopPropagation();
-                onDelete(exercise.id);
-              }}
-            >
-              <Ionicons name="trash" size={16} color={COLORS.FEEDBACK.ERROR} />
-              <Text style={[styles.actionText, styles.deleteText]}>Excluir</Text>
-            </TouchableOpacity>
-          )}
+          {/* Botões de ação */}
+          <View style={styles.actionsContainer}>
+            {onEdit && !isHighlighted && (
+              <TouchableOpacity 
+                style={styles.actionButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onEdit(exercise);
+                }}
+              >
+                <Ionicons name="pencil" size={16} color={COLORS.TEXT.LIGHT} />
+                <Text style={styles.actionText}>Editar</Text>
+              </TouchableOpacity>
+            )}
+            
+            {onDelete && !isHighlighted && (
+              <TouchableOpacity 
+                style={[styles.actionButton, styles.deleteButton]}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onDelete(exercise.id);
+                }}
+              >
+                <Ionicons name="trash" size={16} color={COLORS.FEEDBACK.ERROR} />
+                <Text style={[styles.actionText, styles.deleteText]}>Excluir</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
   );
 };
 
@@ -138,6 +191,9 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
+  },
+  touchable: {
+    flex: 1,
   },
   completedContainer: {
     borderLeftWidth: 4,

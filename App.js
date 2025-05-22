@@ -8,8 +8,11 @@ import { View, StyleSheet, LogBox } from 'react-native';
 
 // Importações do projeto
 import { AuthProvider } from './src/contexts/AuthContext';
+import { WorkoutTimerProvider } from './src/contexts/WorkoutTimerContext';
 import RootNavigator from './src/navigation';
 import { COLORS } from './src/design';
+import WorkoutTimerOverlay from './src/components/features/WorkoutTimerOverlay';
+import CongratsAnimation from './src/components/features/CongratsAnimation';
 
 // Verificar se estamos em modo de desenvolvimento
 const isDev = process.env.NODE_ENV !== 'production';
@@ -39,8 +42,12 @@ export default function App() {
   return (
     <View style={styles.container}>
       <AuthProvider>
-        <StatusBar style="light" backgroundColor={COLORS.BACKGROUND.DARK} />
-        <RootNavigator />
+        <WorkoutTimerProvider>
+          <StatusBar style="light" backgroundColor={COLORS.BACKGROUND.DARK} />
+          <RootNavigator />
+          <WorkoutTimerOverlay />
+          <CongratsAnimation />
+        </WorkoutTimerProvider>
       </AuthProvider>
     </View>
   );

@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+Toda vez que você for corrigir um bug ou erro, me dê ao menos 5 opções e escolha alguma sempre que você tiver 90% de certeza que vai funcionar. Caso não tenha, debugue e faça perguntas até chegar nessa porcentagem de certeza. Sempre prefira soluções simples, no caso do uso do supabase siga as recomendações do supabase, não tente criar coisas para dificultar o uso.
