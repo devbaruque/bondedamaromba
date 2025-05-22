@@ -4,7 +4,7 @@ import 'react-native-url-polyfill/auto';
 // Importações React e React Native
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { View, StyleSheet, LogBox } from 'react-native';
+import { View, StyleSheet, LogBox, AppState } from 'react-native';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { en, registerTranslation } from 'react-native-paper-dates';
 
@@ -15,6 +15,7 @@ import RootNavigator from './src/navigation';
 import { COLORS } from './src/design';
 import WorkoutTimerOverlay from './src/components/features/WorkoutTimerOverlay';
 import CongratsAnimation from './src/components/features/CongratsAnimation';
+import performanceMonitor from './src/utils/performanceMonitor';
 
 // Registrar traduções para react-native-paper-dates
 registerTranslation('en', en);
@@ -33,6 +34,36 @@ LogBox.ignoreLogs([
 ]);
 
 export default function App() {
+  // Inicializar monitoramento de performance
+  useEffect(() => {
+    // Iniciar monitoramento
+    const startTime = performance.now();
+    performanceMonitor.startMonitoring();
+    
+    // Registrar carregamento do aplicativo
+    performanceMonitor.recordScreenLoad('App', startTime);
+    
+    // Monitorar mudanças de estado do aplicativo
+    const handleAppStateChange = (nextAppState) => {
+      if (nextAppState === 'active') {
+        // App voltou para o primeiro plano
+        performanceMonitor.startMonitoring();
+      } else if (nextAppState === 'background') {
+        // App foi para o segundo plano
+        performanceMonitor.stopMonitoring();
+      }
+    };
+    
+    // Assinar eventos de mudança de estado
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    
+    // Limpar na desmontagem
+    return () => {
+      subscription.remove();
+      performanceMonitor.stopMonitoring();
+    };
+  }, []);
+
   // Verificar se o polyfill de URL está funcionando corretamente
   useEffect(() => {
     try {

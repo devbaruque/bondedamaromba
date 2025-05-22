@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SPACING, TEXT_VARIANT, BORDER_RADIUS } from '../../design';
@@ -77,6 +77,22 @@ const ExerciseCard = ({
     }
   ];
 
+  // Funções otimizadas com useCallback
+  const handleCompletePress = useCallback((e) => {
+    e.stopPropagation();
+    onToggleComplete(exercise.id);
+  }, [exercise.id, onToggleComplete]);
+
+  const handleEditPress = useCallback((e) => {
+    e.stopPropagation();
+    onEdit(exercise);
+  }, [exercise, onEdit]);
+
+  const handleDeletePress = useCallback((e) => {
+    e.stopPropagation();
+    onDelete(exercise.id);
+  }, [exercise.id, onDelete]);
+
   return (
     <Animated.View style={containerStyle}>
       <TouchableOpacity 
@@ -113,10 +129,7 @@ const ExerciseCard = ({
             {onToggleComplete && (
               <TouchableOpacity 
                 style={styles.completeButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onToggleComplete(exercise.id);
-                }}
+                onPress={handleCompletePress}
                 disabled={isHighlighted}
               >
                 <Ionicons 
@@ -151,10 +164,7 @@ const ExerciseCard = ({
             {onEdit && !isHighlighted && (
               <TouchableOpacity 
                 style={styles.actionButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onEdit(exercise);
-                }}
+                onPress={handleEditPress}
               >
                 <Ionicons name="pencil" size={16} color={COLORS.TEXT.LIGHT} />
                 <Text style={styles.actionText}>Editar</Text>
@@ -164,10 +174,7 @@ const ExerciseCard = ({
             {onDelete && !isHighlighted && (
               <TouchableOpacity 
                 style={[styles.actionButton, styles.deleteButton]}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  onDelete(exercise.id);
-                }}
+                onPress={handleDeletePress}
               >
                 <Ionicons name="trash" size={16} color={COLORS.FEEDBACK.ERROR} />
                 <Text style={[styles.actionText, styles.deleteText]}>Excluir</Text>
@@ -271,4 +278,17 @@ const styles = StyleSheet.create({
   }
 });
 
-export default ExerciseCard; 
+// Exportar com memo para evitar renderizações desnecessárias
+export default React.memo(ExerciseCard, (prevProps, nextProps) => {
+  // Função de comparação personalizada para o memo
+  return (
+    prevProps.exercise.id === nextProps.exercise.id &&
+    prevProps.isCompleted === nextProps.isCompleted &&
+    prevProps.isHighlighted === nextProps.isHighlighted &&
+    // Se o exercício mudar (através de edição), precisamos re-renderizar
+    prevProps.exercise.name === nextProps.exercise.name &&
+    prevProps.exercise.sets === nextProps.exercise.sets &&
+    prevProps.exercise.repetitions === nextProps.exercise.repetitions &&
+    prevProps.exercise.rest_time === nextProps.exercise.rest_time
+  );
+}); 

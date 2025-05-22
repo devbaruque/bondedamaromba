@@ -8,24 +8,114 @@ import supabase from '../supabase';
  */
 export async function signIn(email, password) {
   try {
+    // Adicionar logs detalhados antes da tentativa de login
+    console.log(`===== INICIANDO PROCESSO DE LOGIN =====`);
+    console.log(`Email: ${email}`);
+    console.log(`Senha: ${'*'.repeat(password?.length || 0)}`);
+    
+    // Verificar se o cliente Supabase está disponível
+    if (!supabase || !supabase.auth) {
+      console.error('Cliente Supabase não está disponível ou configurado corretamente');
+      return { error: 'Erro de conexão com o servidor. Tente novamente mais tarde.' };
+    }
+    
+    // Verificar se a função signInWithPassword está disponível
+    if (typeof supabase.auth.signInWithPassword !== 'function') {
+      console.error('Método signInWithPassword não disponível no cliente Supabase');
+      return { error: 'Erro de configuração do aplicativo. Entre em contato com o suporte.' };
+    }
+    
+    // Validação básica
+    if (!email || !password) {
+      console.error('Email ou senha não fornecidos');
+      return { error: 'Email e senha são obrigatórios' };
+    }
+    
+    console.log('Enviando requisição de login para o Supabase...');
+    
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
     if (error) {
+      console.error('Erro retornado pelo Supabase:', error);
+      console.error('Código do erro:', error.code);
+      console.error('Mensagem do erro:', error.message);
+      console.error('Status HTTP:', error.status);
+      
       // Tratando mensagens de erro específicas
       if (error.message === 'Invalid login credentials') {
+        console.log('Credenciais inválidas fornecidas');
         return { error: 'Email ou senha inválidos' };
       }
+      
+      // Tratar erro de email não confirmado
+      if (error.message === 'Email not confirmed' || error.message.includes('not confirmed')) {
+        console.log('Email não confirmado');
+        return { error: 'Seu email ainda não foi confirmado. Por favor, verifique sua caixa de entrada e confirme seu email para continuar.' };
+      }
+      
+      if (error.message.includes('email')) {
+        console.log('Erro relacionado ao email');
+        return { error: 'Verifique se o email está correto' };
+      }
+      
+      if (error.message.includes('password')) {
+        console.log('Erro relacionado à senha');
+        return { error: 'Verifique se a senha está correta' };
+      }
+      
+      if (error.status === 429) {
+        console.log('Muitas tentativas de login');
+        return { error: 'Muitas tentativas de login. Tente novamente mais tarde.' };
+      }
+      
+      if (error.status >= 500) {
+        console.log('Erro no servidor Supabase');
+        return { error: 'Erro no servidor. Tente novamente mais tarde.' };
+      }
+      
       // Outros erros
       return { error: error.message || 'Erro ao fazer login' };
     }
     
+    // Verificar se os dados retornados são válidos
+    if (!data) {
+      console.error('Supabase retornou sucesso mas sem dados');
+      return { error: 'Resposta inválida do servidor' };
+    }
+    
+    console.log('Resposta do Supabase:', JSON.stringify({
+      success: true,
+      userId: data.user?.id,
+      hasSession: !!data.session,
+      email: data.user?.email
+    }));
+    
+    if (!data.user || !data.session) {
+      console.error('Supabase retornou dados incompletos:', data);
+      return { error: 'Resposta incompleta do servidor' };
+    }
+    
+    console.log('===== LOGIN BEM-SUCEDIDO =====');
     return { data };
   } catch (error) {
-    console.error('Erro inesperado no login:', error);
-    return { error: 'Erro inesperado ao tentar fazer login' };
+    console.error('===== EXCEÇÃO NO PROCESSO DE LOGIN =====');
+    console.error('Tipo da exceção:', error.name);
+    console.error('Mensagem da exceção:', error.message);
+    console.error('Stack trace:', error.stack);
+    
+    // Verificar tipo específico de erro
+    if (error.message && error.message.includes('Email not confirmed')) {
+      return { error: 'Seu email ainda não foi confirmado. Por favor, verifique sua caixa de entrada e confirme seu email para continuar.' };
+    }
+    
+    if (error.message && error.message.includes('network')) {
+      return { error: 'Erro de conexão. Verifique sua internet e tente novamente.' };
+    }
+    
+    return { error: 'Erro inesperado ao tentar fazer login. Tente novamente mais tarde.' };
   }
 }
 
@@ -187,5 +277,55 @@ export async function getCurrentUser() {
   } catch (error) {
     console.error('Erro inesperado ao obter usuário:', error);
     return { error: 'Erro inesperado ao obter usuário atual' };
+  }
+}
+
+/**
+ * Reenvia o email de confirmação para um usuário
+ * @param {string} email Email do usuário
+ * @returns {Promise} Promessa com o resultado da operação
+ */
+export async function resendConfirmationEmail(email) {
+  try {
+    console.log(`Reenviando email de confirmação para: ${email}`);
+    
+    if (!email) {
+      return { error: 'Email não fornecido' };
+    }
+    
+    // O Supabase exige que o email seja válido
+    if (!email.includes('@')) {
+      return { error: 'Formato de email inválido' };
+    }
+    
+    const { data, error } = await supabase.auth.resend({
+      type: 'signup',
+      email: email,
+    });
+    
+    if (error) {
+      console.error('Erro ao reenviar email de confirmação:', error);
+      
+      // Tratamento de erros específicos
+      if (error.message.includes('already confirmed')) {
+        return { error: 'Este email já foi confirmado. Tente fazer login normalmente.' };
+      }
+      
+      if (error.message.includes('not found')) {
+        return { error: 'Email não encontrado. Verifique se o endereço está correto.' };
+      }
+      
+      if (error.status === 429) {
+        return { error: 'Muitas solicitações. Aguarde alguns minutos antes de tentar novamente.' };
+      }
+      
+      return { error: error.message || 'Erro ao reenviar email de confirmação' };
+    }
+    
+    console.log('Email de confirmação reenviado com sucesso');
+    return { success: true };
+  } catch (error) {
+    console.error('Exceção ao reenviar email de confirmação:', error);
+    return { error: 'Erro inesperado ao tentar reenviar o email. Tente novamente mais tarde.' };
   }
 } 

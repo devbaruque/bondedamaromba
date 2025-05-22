@@ -62,28 +62,53 @@ export const AuthProvider = ({ children }) => {
 
   // Função para login
   const signIn = async (email, password) => {
+    console.log('===== CONTEXTO AUTH: INICIANDO LOGIN =====');
+    console.log('Email fornecido:', email);
+    
     setIsLoading(true);
     setAuthError(null);
     
     try {
+      console.log('Chamando serviço de autenticação...');
       const { data, error } = await AuthService.signIn(email, password);
       
       if (error) {
+        console.error('===== CONTEXTO AUTH: ERRO NO LOGIN =====');
+        console.error('Erro recebido do serviço de autenticação:', error);
         setAuthError(error);
         return { error };
       }
       
+      console.log('Resposta do serviço de autenticação:', JSON.stringify({
+        success: true,
+        hasData: !!data,
+        hasUser: !!data?.user,
+        hasSession: !!data?.session,
+      }));
+      
       if (data?.session && data?.user) {
+        console.log('Dados do usuário recebidos:', {
+          id: data.user.id,
+          email: data.user.email,
+          sessionExpiry: data.session.expires_at,
+        });
+        
         setUser(data.user);
         setSession(data.session);
+        console.log('===== CONTEXTO AUTH: LOGIN BEM-SUCEDIDO =====');
         return { success: true };
       } else {
         // Login bem-sucedido mas sem retorno de dados esperados
+        console.error('Dados incompletos recebidos:', data);
         setAuthError('Login não retornou os dados esperados');
         return { error: 'Login não retornou os dados esperados' };
       }
     } catch (error) {
+      console.error('===== CONTEXTO AUTH: EXCEÇÃO NO LOGIN =====');
       console.error('Erro no signIn:', error);
+      console.error('Tipo:', error.name);
+      console.error('Mensagem:', error.message);
+      
       const errorMessage = 'Erro ao fazer login. Tente novamente mais tarde.';
       setAuthError(errorMessage);
       return { error: errorMessage };

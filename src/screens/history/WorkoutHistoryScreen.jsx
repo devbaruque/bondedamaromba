@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, Alert, RefreshControl, StatusBar 
+  ActivityIndicator, Alert, RefreshControl, StatusBar,
+  InteractionManager 
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,93 @@ import {
 import { COLORS, SPACING, BORDER_RADIUS } from '../../design';
 import { getWorkoutHistory, deleteWorkoutSession, getWorkoutSessionDetails } from '../../services';
 
+// Constante para a altura estimada de cada item
+const WORKOUT_ITEM_HEIGHT = 120;
+const DAY_SELECTOR_HEIGHT = 60;
+
+// Componente para item de treino memoizado
+const WorkoutItem = React.memo(({ item, onPress, onDelete }) => {
+  // Dados básicos do treino
+  const workoutName = item.workout_plans?.name || 'Treino sem nome';
+  const startTime = item.start_time ? format(parseISO(item.start_time), 'HH:mm') : '';
+  
+  // Calcular a duração do treino
+  let duration = 'Duração não disponível';
+  if (item.start_time && item.end_time) {
+    const start = parseISO(item.start_time);
+    const end = parseISO(item.end_time);
+    const durationMinutes = Math.round((end - start) / (1000 * 60));
+    duration = `${durationMinutes} minutos`;
+  }
+  
+  return (
+    <Card 
+      style={styles.workoutCard} 
+      onPress={onPress}
+    >
+      <Card.Content>
+        <View style={styles.workoutHeader}>
+          <View>
+            <Text style={styles.workoutName}>{workoutName}</Text>
+            <Text style={styles.workoutTime}>{startTime}</Text>
+          </View>
+          <Text style={styles.durationText}>{duration}</Text>
+        </View>
+        
+        <View style={styles.workoutActions}>
+          <Button 
+            mode="text" 
+            compact 
+            onPress={onPress}
+          >
+            Detalhes
+          </Button>
+          <Button 
+            mode="text" 
+            compact 
+            textColor={COLORS.FEEDBACK.ERROR}
+            onPress={() => onDelete(item.id)}
+          >
+            Excluir
+          </Button>
+        </View>
+      </Card.Content>
+    </Card>
+  );
+});
+
+// Componente para o seletor de dias memoizado
+const DaySelector = React.memo(({ day, isSelected, isTodays, hasWorkout, onSelect }) => {
+  // Formato do dia (ex: "Seg, 22")
+  const dayText = format(day, 'EEE, dd', { locale: ptBR });
+  
+  return (
+    <TouchableOpacity
+      style={[
+        styles.daySelector,
+        isSelected && styles.selectedDaySelector,
+        isTodays && styles.todaySelector,
+        hasWorkout && styles.workoutDaySelector
+      ]}
+      onPress={() => onSelect(day)}
+    >
+      <Text style={[
+        styles.daySelectorText,
+        isSelected && styles.selectedDayText
+      ]}>
+        {dayText}
+      </Text>
+      
+      {hasWorkout && (
+        <View style={[
+          styles.workoutIndicator,
+          isSelected && styles.selectedWorkoutIndicator
+        ]} />
+      )}
+    </TouchableOpacity>
+  );
+});
+
 const WorkoutHistoryScreen = ({ navigation }) => {
   // Estados principais
   const [historyData, setHistoryData] = useState([]);
@@ -31,10 +119,16 @@ const WorkoutHistoryScreen = ({ navigation }) => {
   const [currentDays, setCurrentDays] = useState([]);
   const [periodLabel, setPeriodLabel] = useState('');
 
+  // Referências para FlatLists
+  const daysListRef = useRef(null);
+  const workoutsListRef = useRef(null);
+
   // Carregar histórico quando a tela for focada
   useFocusEffect(
     useCallback(() => {
-      fetchHistoryData();
+      InteractionManager.runAfterInteractions(() => {
+        updateDateRange();
+      });
     }, [])
   );
 
@@ -44,7 +138,7 @@ const WorkoutHistoryScreen = ({ navigation }) => {
   }, [selectedDate, viewMode]);
 
   // Atualizar o intervalo de datas com base no modo de visualização
-  const updateDateRange = () => {
+  const updateDateRange = useCallback(() => {
     let start, end, days;
     
     if (viewMode === 'week') {
@@ -74,10 +168,10 @@ const WorkoutHistoryScreen = ({ navigation }) => {
     
     setCurrentDays(days);
     fetchHistoryData(start, end);
-  };
+  }, [selectedDate, viewMode]);
 
   // Buscar dados do histórico
-  const fetchHistoryData = async (start, end) => {
+  const fetchHistoryData = useCallback(async (start, end) => {
     try {
       setIsLoading(true);
       
@@ -129,10 +223,10 @@ const WorkoutHistoryScreen = ({ navigation }) => {
       setIsLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [selectedDate, viewMode]);
 
   // Filtrar histórico por data
-  const filterByDate = (date, data = historyData) => {
+  const filterByDate = useCallback((date, data = historyData) => {
     if (!data || data.length === 0) {
       setFilteredHistory([]);
       return;
@@ -157,34 +251,34 @@ const WorkoutHistoryScreen = ({ navigation }) => {
     
     console.log(`Encontrados ${filtered.length} treinos para o dia selecionado`);
     setFilteredHistory(filtered);
-  };
+  }, [historyData]);
 
   // Navegar para o período anterior
-  const handlePrevious = () => {
+  const handlePrevious = useCallback(() => {
     if (viewMode === 'week') {
       setSelectedDate(subWeeks(selectedDate, 1));
     } else {
       setSelectedDate(subMonths(selectedDate, 1));
     }
-  };
+  }, [selectedDate, viewMode]);
 
   // Navegar para o próximo período
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (viewMode === 'week') {
       setSelectedDate(addWeeks(selectedDate, 1));
     } else {
       setSelectedDate(addMonths(selectedDate, 1));
     }
-  };
+  }, [selectedDate, viewMode]);
 
   // Selecionar um dia específico
-  const handleSelectDay = (day) => {
+  const handleSelectDay = useCallback((day) => {
     setSelectedDate(day);
     filterByDate(day);
-  };
+  }, [filterByDate]);
 
   // Ver detalhes de uma sessão de treino
-  const handleViewSessionDetails = async (sessionId) => {
+  const handleViewSessionDetails = useCallback(async (sessionId) => {
     if (!sessionId) {
       console.error('handleViewSessionDetails - ID da sessão não fornecido');
       Alert.alert('Erro', 'Não foi possível abrir os detalhes da sessão.');
@@ -239,10 +333,10 @@ const WorkoutHistoryScreen = ({ navigation }) => {
         'Ocorreu um erro ao tentar visualizar os detalhes desta sessão.'
       );
     }
-  };
+  }, [navigation]);
 
   // Excluir uma sessão de treino
-  const handleDeleteSession = (sessionId) => {
+  const handleDeleteSession = useCallback((sessionId) => {
     if (!sessionId) {
       console.error('Tentativa de excluir sessão sem ID');
       return;
@@ -310,138 +404,96 @@ const WorkoutHistoryScreen = ({ navigation }) => {
         }
       ]
     );
-  };
+  }, [historyData, filteredHistory, updateDateRange]);
 
   // Pull to refresh
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     updateDateRange();
-  };
+  }, [updateDateRange]);
+
+  // Configuração para otimizar a FlatList de dias
+  const getDaySelectorLayout = useCallback((data, index) => ({
+    length: DAY_SELECTOR_HEIGHT,
+    offset: DAY_SELECTOR_HEIGHT * index,
+    index
+  }), []);
+
+  // Configuração para otimizar a FlatList de treinos
+  const getWorkoutItemLayout = useCallback((data, index) => ({
+    length: WORKOUT_ITEM_HEIGHT,
+    offset: WORKOUT_ITEM_HEIGHT * index,
+    index
+  }), []);
+
+  // Memoizar o check de treinos nos dias para evitar cálculos repetidos
+  const daysWithWorkouts = useMemo(() => {
+    const result = new Set();
+    historyData.forEach(session => {
+      if (session.start_time) {
+        const sessionDate = parseISO(session.start_time);
+        if (isValid(sessionDate)) {
+          result.add(format(sessionDate, 'yyyy-MM-dd'));
+        }
+      }
+    });
+    return result;
+  }, [historyData]);
 
   // Renderizar um item do seletor de dias no modo semanal
-  const renderDaySelector = (day, index) => {
-    const isSelected = isSameDay(day, selectedDate);
-    const isTodays = isToday(day);
+  const renderDaySelector = useCallback(({ item }) => {
+    const isSelected = isSameDay(item, selectedDate);
+    const isTodays = isToday(item);
     
-    // Verificar se tem treino neste dia
-    const hasWorkout = historyData.some(session => {
-      if (!session.start_time) return false;
-      const sessionDate = parseISO(session.start_time);
-      return isSameDay(sessionDate, day);
-    });
-    
-    // Formato do dia
-    let dayText;
-    if (viewMode === 'week') {
-      // Para semanal: "Seg, 22"
-      dayText = format(day, 'EEE, dd', { locale: ptBR });
-    } else {
-      // Para mensal: "Semana 1"
-      const weekNumber = Math.ceil(parseInt(format(day, 'd')) / 7);
-      dayText = `Semana ${weekNumber}`;
-    }
+    // Verificar se tem treino neste dia usando o Set memoizado
+    const formattedDay = format(item, 'yyyy-MM-dd');
+    const hasWorkout = daysWithWorkouts.has(formattedDay);
     
     return (
-      <TouchableOpacity
-        key={index}
-        style={[
-          styles.daySelector,
-          isSelected && styles.selectedDaySelector,
-          isTodays && styles.todaySelector,
-          hasWorkout && styles.workoutDaySelector
-        ]}
-        onPress={() => handleSelectDay(day)}
-      >
-        <Text style={[
-          styles.daySelectorText,
-          isSelected && styles.selectedDayText
-        ]}>
-          {dayText}
-            </Text>
-        
-        {hasWorkout && (
-          <View style={[
-            styles.workoutIndicator,
-            isSelected && styles.selectedWorkoutIndicator
-          ]} />
-        )}
-      </TouchableOpacity>
+      <DaySelector
+        day={item}
+        isSelected={isSelected}
+        isTodays={isTodays}
+        hasWorkout={hasWorkout}
+        onSelect={handleSelectDay}
+      />
     );
-  };
+  }, [selectedDate, daysWithWorkouts, handleSelectDay]);
 
   // Renderizar um item da lista de treinos do dia
-  const renderWorkoutItem = ({ item }) => {
-    if (!item || !item.id) {
-      console.error('renderWorkoutItem - Item inválido:', item);
-      return null;
-    }
-    
-    console.log('renderWorkoutItem - Renderizando item:', {
-      id: item.id,
-      workout_plan_id: item.workout_plan_id,
-      workout_name: item.workout_plans?.name || 'Treino sem nome'
-    });
-    
-    const workoutName = item.workout_plans?.name || 'Treino sem nome';
-    const startTime = item.start_time ? format(parseISO(item.start_time), 'HH:mm') : '';
-    
-    // Calcular a duração do treino
-    let duration = 'Duração não disponível';
-    if (item.start_time && item.end_time) {
-      const start = parseISO(item.start_time);
-      const end = parseISO(item.end_time);
-      const durationMinutes = Math.round((end - start) / (1000 * 60));
-      duration = `${durationMinutes} minutos`;
-    }
-    
+  const renderWorkoutItem = useCallback(({ item }) => {
     return (
-      <Card 
-        style={styles.workoutCard} 
-        onPress={() => {
-          console.log('renderWorkoutItem - Card clicado, ID:', item.id);
-          handleViewSessionDetails(item.id);
-        }}
-      >
-        <Card.Content>
-          <View style={styles.workoutHeader}>
-            <View>
-              <Text style={styles.workoutName}>{workoutName}</Text>
-              <Text style={styles.workoutTime}>{startTime}</Text>
-            </View>
-            <Text style={styles.durationText}>{duration}</Text>
-          </View>
-          
-          <View style={styles.workoutActions}>
-            <Button 
-              mode="text" 
-              compact 
-              onPress={() => {
-                console.log('renderWorkoutItem - Botão Detalhes clicado, ID:', item.id);
-                handleViewSessionDetails(item.id).catch(() => {
-                  console.log('renderWorkoutItem - Tentando navegação direta como fallback');
-                  navigation.navigate('WorkoutSessionDetails', { 
-                    sessionId: item.id
-                  });
-                });
-              }}
-            >
-              Detalhes
-            </Button>
-            <Button 
-              mode="text" 
-              compact 
-              textColor={COLORS.FEEDBACK.ERROR}
-              onPress={() => handleDeleteSession(item.id)}
-            >
-              Excluir
-            </Button>
-          </View>
-        </Card.Content>
-      </Card>
+      <WorkoutItem
+        item={item}
+        onPress={() => handleViewSessionDetails(item.id)}
+        onDelete={handleDeleteSession}
+      />
     );
-  };
+  }, [handleViewSessionDetails, handleDeleteSession]);
 
-    return (
+  // Key extractors memoizados
+  const dayKeyExtractor = useCallback((_, index) => `day-${index}`, []);
+  const workoutKeyExtractor = useCallback(item => item.id, []);
+
+  // Função memoizada para lidar com o onScroll da FlatList
+  const handleScroll = useMemo(() => {
+    let lastScrollTime = 0;
+    return ({ nativeEvent }) => {
+      const now = Date.now();
+      if (now - lastScrollTime < 16) { // Limitar a ~60fps
+        return;
+      }
+      lastScrollTime = now;
+    };
+  }, []);
+
+  // Função para encontrar o índice do dia atual na lista de dias
+  const findTodayIndex = useMemo(() => {
+    if (currentDays.length === 0) return 0;
+    return currentDays.findIndex(day => isToday(day)) || 0;
+  }, [currentDays]);
+
+  return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       
@@ -477,12 +529,30 @@ const WorkoutHistoryScreen = ({ navigation }) => {
       
       {/* Seletor de dias */}
       <FlatList
+        ref={daysListRef}
         data={currentDays}
-        renderItem={({ item, index }) => renderDaySelector(item, index)}
-        keyExtractor={(_, index) => `day-${index}`}
+        renderItem={renderDaySelector}
+        keyExtractor={dayKeyExtractor}
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.daysList}
+        getItemLayout={getDaySelectorLayout}
+        initialScrollIndex={findTodayIndex}
+        initialNumToRender={7}
+        maxToRenderPerBatch={7}
+        windowSize={7}
+        removeClippedSubviews={true}
+        onScrollToIndexFailed={() => {
+          // Fallback para quando não conseguir rolar para o índice
+          setTimeout(() => {
+            if (daysListRef.current && currentDays.length > 0) {
+              daysListRef.current.scrollToOffset({ 
+                offset: 0, 
+                animated: true 
+              });
+            }
+          }, 100);
+        }}
       />
       
       {/* Lista de treinos do dia */}
@@ -491,20 +561,27 @@ const WorkoutHistoryScreen = ({ navigation }) => {
           <ActivityIndicator size="large" color={COLORS.PRIMARY} />
         </View>
       ) : filteredHistory.length > 0 ? (
-      <FlatList
-        data={filteredHistory}
-        keyExtractor={(item) => item.id}
-        renderItem={renderWorkoutItem}
-        contentContainerStyle={styles.workoutsList}
-        refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh}
-            colors={[COLORS.PRIMARY]} 
-            tintColor={COLORS.PRIMARY}
-          />
-        }
-      />
+        <FlatList
+          ref={workoutsListRef}
+          data={filteredHistory}
+          keyExtractor={workoutKeyExtractor}
+          renderItem={renderWorkoutItem}
+          contentContainerStyle={styles.workoutsList}
+          refreshControl={
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh}
+              colors={[COLORS.PRIMARY]} 
+              tintColor={COLORS.PRIMARY}
+            />
+          }
+          getItemLayout={getWorkoutItemLayout}
+          initialNumToRender={5}
+          maxToRenderPerBatch={5}
+          windowSize={7}
+          removeClippedSubviews={true}
+          onScroll={handleScroll}
+        />
       ) : (
         <View style={styles.emptyContainer}>
           <Ionicons 
@@ -576,6 +653,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     minWidth: 100,
+    height: DAY_SELECTOR_HEIGHT,
   },
   selectedDaySelector: {
     backgroundColor: COLORS.PRIMARY,
@@ -613,6 +691,7 @@ const styles = StyleSheet.create({
   workoutCard: {
     backgroundColor: COLORS.BACKGROUND.LIGHT,
     marginBottom: SPACING.MD,
+    height: WORKOUT_ITEM_HEIGHT,
   },
   workoutHeader: {
     flexDirection: 'row',

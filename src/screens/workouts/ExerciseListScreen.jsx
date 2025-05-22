@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, Alert, RefreshControl, Animated
+  ActivityIndicator, Alert, RefreshControl, Animated,
+  InteractionManager
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +18,9 @@ import {
 import { Modal, Button } from '../../components/ui';
 import ExerciseCard from '../../components/features/ExerciseCard';
 import { useWorkoutTimer } from '../../contexts/WorkoutTimerContext';
+
+// Constante para a altura de cada item da lista
+const EXERCISE_ITEM_HEIGHT = 220; // Altura aproximada de um exercício
 
 const ExerciseListScreen = ({ navigation, route }) => {
   const { workout } = route.params;
@@ -60,12 +64,15 @@ const ExerciseListScreen = ({ navigation, route }) => {
   // Verificar se há sessão ativa quando a tela é focada
   useFocusEffect(
     useCallback(() => {
-      fetchExercises();
+      // Usar InteractionManager para adiar carregamento até que a navegação esteja concluída
+      InteractionManager.runAfterInteractions(() => {
+        fetchExercises();
+      });
     }, [])
   );
 
   // Buscar exercícios
-  const fetchExercises = async () => {
+  const fetchExercises = useCallback(async () => {
     try {
       setIsLoading(true);
       const { data, error } = await getExercisesByWorkoutPlan(workout.id);
@@ -84,21 +91,21 @@ const ExerciseListScreen = ({ navigation, route }) => {
       setIsLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [workout.id]);
 
   // Pull to refresh
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchExercises();
-  };
+  }, [fetchExercises]);
 
   // Navegação para adicionar um exercício
-  const handleAddExercise = () => {
+  const handleAddExercise = useCallback(() => {
     navigation.navigate('AddExercise', { workoutId: workout.id });
-  };
+  }, [navigation, workout.id]);
 
   // Iniciar sessão de treino
-  const handleStartSession = async () => {
+  const handleStartSession = useCallback(async () => {
     if (exercises.length === 0) {
       Alert.alert(
         'Sem exercícios', 
@@ -168,10 +175,10 @@ const ExerciseListScreen = ({ navigation, route }) => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [exercises.length, workout.id, workout.name, startTimer]);
 
   // Finalizar sessão de treino
-  const handleEndSession = async () => {
+  const handleEndSession = useCallback(async () => {
     try {
       if (!activeSession || !activeSession.id) {
         Alert.alert('Erro', 'Não há sessão de treino ativa.');
@@ -249,117 +256,126 @@ const ExerciseListScreen = ({ navigation, route }) => {
       console.log('Resposta da API:', JSON.stringify({ data, error }));
       
       if (error) {
-        console.error('Erro ao finalizar sessão de treino:', error);
-        Alert.alert('Erro', 'Não foi possível finalizar o treino. Seus exercícios foram registrados, mas você pode tentar finalizar novamente.');
-        setIsLoading(false);
-        return;
+        console.error('Erro ao finalizar sessão:', error);
+        Alert.alert('Erro', 'Não foi possível finalizar o treino corretamente, mas seus exercícios foram registrados.');
+      } else {
+        console.log('Sessão finalizada com sucesso');
+        // Notificar o contexto do timer
+        finishWorkout();
+        setIsSessionActive(false);
+        setActiveSession(null);
+        Alert.alert('Treino Concluído', 'Parabéns! Seu treino foi concluído e registrado com sucesso.');
       }
       
-      setActiveSession(null);
-      setIsSessionActive(false);
-      setCompletedExercises({});
-      setCompletedSets({});
-      
-      // Mostrar animação de parabéns
-      finishWorkout();
-      
     } catch (error) {
-      console.error('Erro ao finalizar sessão de treino:', error);
+      console.error('Erro ao finalizar sessão:', error);
       Alert.alert('Erro', 'Não foi possível finalizar o treino. Tente novamente.');
     } finally {
       setIsLoading(false);
+      setAnimatingCompletion(false);
+      setHighlightedExerciseId(null);
     }
-  };
+  }, [activeSession, exercises, completedSets, finishWorkout]);
 
-  // Navegação para ver detalhes de um exercício
-  const handleExercisePress = (exercise) => {
-    navigation.navigate('ExerciseDetail', { 
-      exercise, 
-      isCompleted: !!completedExercises[exercise.id],
-      onComplete: (completedSetsCount) => {
-        if (isSessionActive) {
-          handleToggleComplete(exercise.id, completedSetsCount);
+  // Navegar para detalhes do exercício
+  const handleExercisePress = useCallback((exercise) => {
+    if (isSessionActive && !animatingCompletion) {
+      // Durante sessão ativa, abrir a tela de detalhes do exercício
+      navigation.navigate('ExerciseDetail', { 
+        exercise, 
+        workoutId: workout.id,
+        sessionId: activeSession?.id,
+        isSessionActive: true,
+        onComplete: (exerciseId, completedSets) => {
+          handleToggleComplete(exerciseId, completedSets);
         }
-      }
-    });
-  };
+      });
+    } else if (!animatingCompletion) {
+      // Fora de sessão, apenas visualizar o exercício
+      navigation.navigate('ExerciseDetail', { 
+        exercise, 
+        workoutId: workout.id 
+      });
+    }
+  }, [isSessionActive, animatingCompletion, navigation, workout.id, activeSession, handleToggleComplete]);
 
-  // Editar exercício
-  const handleEditExercise = (exercise) => {
-    navigation.navigate('EditExercise', { exercise });
-  };
+  // Navegar para edição do exercício
+  const handleEditExercise = useCallback((exercise) => {
+    navigation.navigate('EditExercise', { exercise, workoutId: workout.id });
+  }, [navigation, workout.id]);
 
   // Confirmar exclusão de exercício
-  const confirmDeleteExercise = (exerciseId) => {
+  const confirmDeleteExercise = useCallback((exerciseId) => {
     setSelectedExerciseId(exerciseId);
     setShowDeleteModal(true);
-  };
+  }, []);
 
   // Excluir exercício
-  const handleDeleteExercise = async () => {
+  const handleDeleteExercise = useCallback(async () => {
     if (!selectedExerciseId) return;
     
+    setShowDeleteModal(false);
+    setIsLoading(true);
+    
     try {
-      setIsLoading(true);
       const { error } = await deleteExercise(selectedExerciseId);
       
       if (error) {
-        Alert.alert('Erro', 'Não foi possível excluir o exercício.');
+        console.error('Erro ao excluir exercício:', error);
+        Alert.alert('Erro', 'Não foi possível excluir o exercício. Tente novamente.');
         return;
       }
       
-      // Remover o exercício da lista
-      setExercises(exercises.filter(ex => ex.id !== selectedExerciseId));
-      Alert.alert('Sucesso', 'Exercício excluído com sucesso!');
+      // Atualizar a lista de exercícios
+      setExercises(prevExercises => 
+        prevExercises.filter(ex => ex.id !== selectedExerciseId)
+      );
+      
+      // Limpar estados relacionados ao exercício excluído
+      if (completedExercises[selectedExerciseId]) {
+        setCompletedExercises(prev => {
+          const newState = {...prev};
+          delete newState[selectedExerciseId];
+          return newState;
+        });
+      }
+      
+      if (completedSets[selectedExerciseId]) {
+        setCompletedSets(prev => {
+          const newState = {...prev};
+          delete newState[selectedExerciseId];
+          return newState;
+        });
+      }
+      
     } catch (error) {
       console.error('Erro ao excluir exercício:', error);
-      Alert.alert('Erro', 'Ocorreu um erro ao excluir o exercício.');
+      Alert.alert('Erro', 'Ocorreu um erro ao tentar excluir o exercício. Tente novamente.');
     } finally {
-      setShowDeleteModal(false);
-      setSelectedExerciseId(null);
       setIsLoading(false);
+      setSelectedExerciseId(null);
     }
-  };
+  }, [selectedExerciseId, completedExercises, completedSets]);
 
-  // Alternar status de conclusão
-  const handleToggleComplete = (exerciseId, setsCompleted = 0) => {
-    // Se não há sessão ativa e está tentando marcar como completo, perguntar se quer iniciar
-    if (!isSessionActive && !completedExercises[exerciseId]) {
-      Alert.alert(
-        'Iniciar Treino',
-        'Deseja iniciar um treino para registrar seu progresso?',
-        [
-          {
-            text: 'Não',
-            style: 'cancel',
-          },
-          {
-            text: 'Sim',
-            onPress: async () => {
-              await handleStartSession();
-              // Depois de iniciar a sessão, marcar o exercício
-              setCompletedExercises(prev => ({
-                ...prev,
-                [exerciseId]: true
-              }));
-              setCompletedSets(prev => ({
-                ...prev,
-                [exerciseId]: setsCompleted
-              }));
-            }
-          },
-        ]
-      );
-      return;
-    }
+  // Alternar estado de conclusão do exercício
+  const handleToggleComplete = useCallback((exerciseId, setsCompleted = 0) => {
+    if (animatingCompletion) return;
     
-    // Atualizar estado de conclusão
-    setCompletedExercises(prev => ({
-      ...prev,
-      [exerciseId]: !prev[exerciseId]
-    }));
+    setCompletedExercises(prev => {
+      const newState = {...prev};
+      
+      if (newState[exerciseId]) {
+        // Se já estava completo, desmarcar
+        delete newState[exerciseId];
+      } else {
+        // Marcar como completo
+        newState[exerciseId] = true;
+      }
+      
+      return newState;
+    });
     
-    // Atualizar séries completadas
+    // Atualizar quantidade de séries completadas, se informado
     if (setsCompleted > 0) {
       setCompletedSets(prev => ({
         ...prev,
@@ -367,138 +383,184 @@ const ExerciseListScreen = ({ navigation, route }) => {
       }));
     }
     
-    // Se estiver em uma sessão ativa, registrar a alteração no servidor
-    if (isSessionActive && activeSession?.id) {
-      // Aqui vamos apenas atualizar o estado local
-      // Os logs serão enviados ao servidor quando o treino for finalizado
+    // Se estiver em uma sessão ativa, registrar no servidor
+    if (isSessionActive && activeSession && activeSession.id) {
+      const exercise = exercises.find(ex => ex.id === exerciseId);
+      if (exercise) {
+        // Determinar quantas séries foram completadas
+        const sets = setsCompleted || exercise.sets || 1;
+        
+        // Enviar log para o servidor em background
+        logExerciseCompletion(activeSession.id, exerciseId, sets)
+          .then(({ data, error }) => {
+            if (error) {
+              console.error('Erro ao registrar conclusão do exercício:', error);
+              // Não mostrar alerta para não interromper o fluxo do usuário
+            } else {
+              console.log('Exercício registrado com sucesso:', data);
+            }
+          })
+          .catch(error => {
+            console.error('Erro ao registrar conclusão do exercício:', error);
+          });
+      }
     }
-  };
+  }, [animatingCompletion, isSessionActive, activeSession, exercises]);
 
-  // Renderizar um item da lista de exercícios
-  const renderExerciseItem = ({ item }) => {
+  // Configuração para otimizar a FlatList
+  const getItemLayout = useCallback((data, index) => ({
+    length: EXERCISE_ITEM_HEIGHT,
+    offset: EXERCISE_ITEM_HEIGHT * index,
+    index
+  }), []);
+
+  // Extrator de chave para a FlatList
+  const keyExtractor = useCallback((item) => item.id, []);
+
+  // Renderizador de item otimizado com useMemo
+  const renderExerciseItem = useCallback(({ item }) => {
+    const isCompleted = completedExercises[item.id] || false;
+    const isHighlighted = highlightedExerciseId === item.id;
+    
     return (
-      <ExerciseCard
+      <ExerciseCard 
         exercise={item}
         onPress={() => handleExercisePress(item)}
-        isCompleted={!!completedExercises[item.id]}
-        onToggleComplete={() => handleToggleComplete(item.id)}
-        onEdit={() => handleEditExercise(item)}
-        onDelete={() => confirmDeleteExercise(item.id)}
-        isHighlighted={highlightedExerciseId === item.id}
+        isCompleted={isCompleted}
+        onToggleComplete={isSessionActive ? handleToggleComplete : null}
+        onEdit={!isSessionActive ? handleEditExercise : null}
+        onDelete={!isSessionActive ? confirmDeleteExercise : null}
+        isHighlighted={isHighlighted}
       />
     );
-  };
+  }, [completedExercises, highlightedExerciseId, isSessionActive, handleExercisePress, handleToggleComplete, handleEditExercise, confirmDeleteExercise]);
 
-  // Botão de iniciar ou finalizar treino
-  const renderSessionButton = () => {
-    if (exercises.length === 0) {
-      return null;
+  // Renderizar botão de sessão
+  const renderSessionButton = useCallback(() => {
+    if (isSessionActive) {
+      return (
+        <TouchableOpacity 
+          style={[styles.sessionButton, styles.endSessionButton]}
+          onPress={handleEndSession}
+          disabled={animatingCompletion}
+        >
+          <Ionicons name="checkmark-circle" size={20} color={COLORS.TEXT.LIGHT} />
+          <Text style={styles.sessionButtonText}>
+            {animatingCompletion ? 'Finalizando...' : 'Finalizar Treino'}
+          </Text>
+        </TouchableOpacity>
+      );
+    } else {
+      return (
+        <TouchableOpacity 
+          style={styles.sessionButton}
+          onPress={handleStartSession}
+        >
+          <Ionicons name="play-circle" size={20} color={COLORS.TEXT.LIGHT} />
+          <Text style={styles.sessionButtonText}>Iniciar Treino</Text>
+        </TouchableOpacity>
+      );
     }
-    
-    return isSessionActive ? (
-      <Button 
-        title={animatingCompletion ? "Finalizando..." : "Finalizar Treino"} 
-        variant="primary" 
-        onPress={handleEndSession}
-        style={styles.sessionButton}
-        disabled={animatingCompletion || isLoading}
-      />
-    ) : (
-      <Button 
-        title="Iniciar Treino" 
-        variant="primary" 
-        onPress={handleStartSession}
-        style={styles.sessionButton}
-        disabled={isLoading}
-      />
-    );
-  };
+  }, [isSessionActive, handleEndSession, animatingCompletion, handleStartSession]);
 
-  // Renderizar o conteúdo principal
-  const renderContent = () => {
-    if (isLoading && !refreshing && !animatingCompletion) {
+  // Função memoizada para lidar com o onScroll da FlatList
+  const handleScroll = useMemo(() => {
+    // Usar o throttle para limitar a frequência de eventos de scroll
+    let lastScrollTime = 0;
+    return ({ nativeEvent }) => {
+      const now = Date.now();
+      if (now - lastScrollTime < 16) { // Limitar a ~60fps
+        return;
+      }
+      lastScrollTime = now;
+      // Aqui você pode adicionar lógica de scroll se necessário
+    };
+  }, []);
+
+  // Renderizar conteúdo principal
+  const renderContent = useCallback(() => {
+    if (isLoading && !refreshing) {
       return (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={COLORS.PRIMARY} />
         </View>
       );
     }
-
+    
     if (exercises.length === 0) {
       return (
-        <View style={styles.centerContainer}>
-          <Ionicons 
-            name="fitness-outline" 
-            size={64} 
-            color={COLORS.GRAY[700]} 
-            style={{ marginBottom: SPACING.MD }}
-          />
+        <View style={styles.emptyContainer}>
+          <Ionicons name="barbell-outline" size={64} color={COLORS.GRAY[700]} />
           <Text style={styles.emptyText}>Nenhum exercício adicionado</Text>
           <Text style={styles.emptySubtext}>
             Adicione exercícios ao seu treino para começar
           </Text>
           <TouchableOpacity 
-            style={styles.emptyButton}
+            style={styles.addButton}
             onPress={handleAddExercise}
           >
-            <Text style={styles.emptyButtonText}>Adicionar Exercício</Text>
+            <Ionicons name="add-circle" size={20} color={COLORS.TEXT.LIGHT} />
+            <Text style={styles.addButtonText}>Adicionar Exercício</Text>
           </TouchableOpacity>
         </View>
       );
     }
-
+    
     return (
       <FlatList
         ref={flatListRef}
         data={exercises}
-        keyExtractor={(item) => item.id}
         renderItem={renderExerciseItem}
-        contentContainerStyle={styles.exerciseList}
+        keyExtractor={keyExtractor}
+        contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl 
             refreshing={refreshing} 
             onRefresh={onRefresh}
-            colors={[COLORS.PRIMARY]} 
+            colors={[COLORS.PRIMARY]}
             tintColor={COLORS.PRIMARY}
           />
         }
-        ListFooterComponent={renderSessionButton}
-        onScrollToIndexFailed={info => {
-          console.log('Falha ao rolar para o índice:', info);
-        }}
+        getItemLayout={getItemLayout}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        windowSize={7}
+        removeClippedSubviews={true}
+        onScroll={handleScroll}
       />
     );
-  };
+  }, [isLoading, refreshing, exercises, renderExerciseItem, keyExtractor, onRefresh, handleAddExercise, getItemLayout, handleScroll]);
 
   return (
     <View style={styles.container}>
       {renderContent()}
       
-      {/* Modal de confirmação de exclusão */}
+      {exercises.length > 0 && (
+        <View style={styles.bottomBar}>
+          {renderSessionButton()}
+        </View>
+      )}
+      
       <Modal
         visible={showDeleteModal}
+        title="Excluir exercício"
         onClose={() => setShowDeleteModal(false)}
-        title="Excluir Exercício"
       >
-        <View style={styles.modalContent}>
-          <Text style={styles.modalText}>
-            Tem certeza que deseja excluir este exercício? Esta ação não pode ser desfeita.
-          </Text>
-          <View style={styles.modalButtons}>
-            <Button 
-              title="Cancelar" 
-              variant="outline" 
-              onPress={() => setShowDeleteModal(false)}
-              style={styles.modalButton}
-            />
-            <Button 
-              title="Excluir" 
-              variant="danger" 
-              onPress={handleDeleteExercise}
-              style={styles.modalButton}
-            />
-          </View>
+        <Text style={styles.modalText}>
+          Tem certeza que deseja excluir este exercício? Esta ação não pode ser desfeita.
+        </Text>
+        <View style={styles.modalActions}>
+          <Button 
+            title="Cancelar" 
+            onPress={() => setShowDeleteModal(false)} 
+            type="secondary"
+          />
+          <Button 
+            title="Excluir" 
+            onPress={handleDeleteExercise} 
+            type="danger"
+          />
         </View>
       </Modal>
     </View>
@@ -568,6 +630,49 @@ const styles = StyleSheet.create({
     marginTop: SPACING.LG,
     marginBottom: SPACING.XL,
     marginHorizontal: SPACING.MD,
+  },
+  sessionButtonText: {
+    color: COLORS.TEXT.LIGHT,
+    fontWeight: '600',
+    fontSize: 16,
+    marginLeft: SPACING.SM,
+  },
+  endSessionButton: {
+    backgroundColor: COLORS.PRIMARY,
+  },
+  bottomBar: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: SPACING.MD,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.XL,
+  },
+  addButton: {
+    backgroundColor: COLORS.PRIMARY,
+    paddingVertical: SPACING.MD,
+    paddingHorizontal: SPACING.XL,
+    borderRadius: BORDER_RADIUS.MD,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  addButtonText: {
+    color: COLORS.TEXT.LIGHT,
+    fontWeight: '600',
+    fontSize: 16,
+    marginLeft: SPACING.SM,
+  },
+  listContent: {
+    padding: SPACING.MD,
+    paddingBottom: SPACING.XL * 3,
   },
 });
 
