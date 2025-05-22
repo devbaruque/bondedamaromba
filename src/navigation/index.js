@@ -1,6 +1,9 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+import { Ionicons } from '@expo/vector-icons';
 
 import { useAuth } from '../contexts/AuthContext';
 
@@ -12,6 +15,9 @@ import ExerciseListScreen from '../screens/workouts/ExerciseListScreen';
 import AddExerciseScreen from '../screens/workouts/AddExerciseScreen';
 import EditExerciseScreen from '../screens/workouts/EditExerciseScreen';
 import ExerciseDetailScreen from '../screens/workouts/ExerciseDetailScreen';
+import WorkoutHistoryScreen from '../screens/history/WorkoutHistoryScreen';
+import WorkoutSessionDetailsScreen from '../screens/history/WorkoutSessionDetailsScreen';
+import WorkoutStatsScreen from '../screens/history/WorkoutStatsScreen';
 import LoadingScreen from '../screens/LoadingScreen';
 
 // Cores do tema
@@ -19,6 +25,8 @@ import { COLORS } from '../design';
 
 // Criando os navegadores
 const Stack = createNativeStackNavigator();
+const Tab = createBottomTabNavigator();
+const TopTab = createMaterialTopTabNavigator();
 
 // Navegador para rotas de autenticação
 const AuthNavigator = () => {
@@ -35,10 +43,10 @@ const AuthNavigator = () => {
   );
 };
 
-// Navegador para rotas autenticadas
-const AppNavigator = () => {
+// Navegador para treinos
+const WorkoutsNavigator = () => {
   return (
-    <Stack.Navigator 
+    <Stack.Navigator
       initialRouteName="WorkoutSelection"
       screenOptions={{ 
         headerStyle: {
@@ -80,6 +88,112 @@ const AppNavigator = () => {
   );
 };
 
+// Navegador com abas para o histórico
+const HistoryTopTabNavigator = () => {
+  return (
+    <TopTab.Navigator
+      screenOptions={{
+        tabBarStyle: {
+          backgroundColor: COLORS.BACKGROUND.DEFAULT,
+          paddingTop: 10,
+          elevation: 0,
+          shadowOpacity: 0,
+          borderBottomWidth: 1,
+          borderBottomColor: COLORS.GRAY[800],
+        },
+        tabBarActiveTintColor: COLORS.PRIMARY,
+        tabBarInactiveTintColor: COLORS.GRAY[500],
+        tabBarIndicatorStyle: {
+          backgroundColor: COLORS.PRIMARY,
+          height: 3,
+        },
+        tabBarLabelStyle: {
+          fontSize: 14,
+          fontWeight: '600',
+          textTransform: 'none',
+        },
+      }}
+    >
+      <TopTab.Screen 
+        name="Atividades" 
+        component={WorkoutHistoryScreen} 
+      />
+      <TopTab.Screen 
+        name="Estatísticas" 
+        component={WorkoutStatsScreen} 
+      />
+    </TopTab.Navigator>
+  );
+};
+
+// Navegador para histórico
+const HistoryNavigator = () => {
+  return (
+    <Stack.Navigator
+      initialRouteName="HistoryTabs"
+      screenOptions={{ 
+        headerStyle: {
+          backgroundColor: COLORS.BACKGROUND.DEFAULT,
+        },
+        headerTintColor: COLORS.TEXT.LIGHT,
+        headerTitleStyle: {
+          fontWeight: '600',
+        },
+        contentStyle: { backgroundColor: COLORS.BACKGROUND.DARK }
+      }}
+    >
+      <Stack.Screen 
+        name="HistoryTabs" 
+        component={HistoryTopTabNavigator}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen 
+        name="WorkoutSessionDetails" 
+        component={WorkoutSessionDetailsScreen}
+        options={{ headerShown: false }}
+      />
+    </Stack.Navigator>
+  );
+};
+
+// Navegador principal com abas
+const TabNavigator = () => {
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarStyle: {
+          backgroundColor: COLORS.BACKGROUND.DEFAULT,
+          borderTopColor: COLORS.GRAY[800],
+          paddingTop: 5,
+          paddingBottom: 10,
+          height: 60,
+        },
+        tabBarActiveTintColor: COLORS.PRIMARY,
+        tabBarInactiveTintColor: COLORS.GRAY[500],
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName;
+
+          if (route.name === 'Treinos') {
+            iconName = focused ? 'barbell' : 'barbell-outline';
+          } else if (route.name === 'Histórico') {
+            iconName = focused ? 'calendar' : 'calendar-outline';
+          }
+
+          return <Ionicons name={iconName} size={size} color={color} />;
+        },
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '500',
+        }
+      })}
+    >
+      <Tab.Screen name="Treinos" component={WorkoutsNavigator} />
+      <Tab.Screen name="Histórico" component={HistoryNavigator} />
+    </Tab.Navigator>
+  );
+};
+
 // Navegador raiz que determina qual navegador mostrar baseado no estado de autenticação
 export const RootNavigator = () => {
   const { isAuthenticated, isLoading } = useAuth();
@@ -90,7 +204,7 @@ export const RootNavigator = () => {
 
   return (
     <NavigationContainer>
-      {isAuthenticated ? <AppNavigator /> : <AuthNavigator />}
+      {isAuthenticated ? <TabNavigator /> : <AuthNavigator />}
     </NavigationContainer>
   );
 };

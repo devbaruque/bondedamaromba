@@ -10,7 +10,7 @@ import { Button, Modal } from '../../components/ui';
 import RestTimer from '../../components/features/RestTimer';
 
 const ExerciseDetailScreen = ({ navigation, route }) => {
-  const { exercise: initialExercise, isCompleted = false } = route.params;
+  const { exercise: initialExercise, isCompleted = false, onComplete } = route.params;
   
   const [exercise, setExercise] = useState(initialExercise);
   const [isLoading, setIsLoading] = useState(true);
@@ -96,6 +96,14 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
     const newCompletedSets = [...completedSets];
     newCompletedSets[index] = !newCompletedSets[index];
     setCompletedSets(newCompletedSets);
+    
+    // Contar séries completadas para reportar ao histórico
+    const completedCount = newCompletedSets.filter(set => set).length;
+    
+    // Verificar se há um callback para reportar o progresso
+    if (onComplete && typeof onComplete === 'function') {
+      onComplete(completedCount);
+    }
   };
   
   // Callback para quando o timer termina
@@ -108,7 +116,29 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
 
   // Marcar todas as séries como concluídas
   const markAllSetsCompleted = () => {
-    setCompletedSets(new Array(exercise.sets).fill(true));
+    const newCompletedSets = new Array(exercise.sets).fill(true);
+    setCompletedSets(newCompletedSets);
+    
+    // Reportar todas as séries completadas ao histórico
+    if (onComplete && typeof onComplete === 'function') {
+      onComplete(exercise.sets);
+    }
+  };
+
+  // Salvar progresso e voltar
+  const handleSaveProgress = () => {
+    const completedCount = completedSets.filter(set => set).length;
+    
+    // Se há séries completadas, considerar o exercício como realizado
+    if (completedCount > 0) {
+      if (onComplete && typeof onComplete === 'function') {
+        onComplete(completedCount);
+      }
+      
+      Alert.alert('Progresso Salvo', `${completedCount} séries registradas`);
+    }
+    
+    navigation.goBack();
   };
 
   // Navegar entre imagens
@@ -255,6 +285,14 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
             onComplete={handleTimerComplete} 
           />
         </View>
+        
+        {/* Botão de salvar progresso */}
+        <Button 
+          title="Salvar e Voltar" 
+          onPress={handleSaveProgress}
+          variant="primary"
+          style={styles.saveButton}
+        />
       </ScrollView>
 
       {/* Modal de confirmação de exclusão */}
@@ -269,19 +307,19 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
           </Text>
           
           <View style={styles.modalButtons}>
-            <TouchableOpacity
-              style={[styles.modalButton, styles.cancelButton]}
+            <Button
+              title="Cancelar"
+              variant="outline"
               onPress={() => setShowDeleteModal(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
-            </TouchableOpacity>
+              style={styles.modalButton}
+            />
             
-            <TouchableOpacity
-              style={[styles.modalButton, styles.deleteButton]}
+            <Button
+              title="Excluir"
+              variant="danger"
               onPress={handleDelete}
-            >
-              <Text style={styles.deleteButtonText}>Excluir</Text>
-            </TouchableOpacity>
+              style={styles.modalButton}
+            />
           </View>
         </View>
       </Modal>
@@ -337,71 +375,72 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    paddingVertical: SPACING.SM,
-    paddingHorizontal: SPACING.MD,
+    padding: SPACING.SM,
   },
   imageNavButton: {
     padding: SPACING.XS,
   },
   imageCounter: {
-    ...TEXT_VARIANT.bodySmall,
     color: COLORS.TEXT.LIGHT,
+    fontSize: 14,
   },
   detailsContainer: {
-    backgroundColor: COLORS.BACKGROUND.DEFAULT,
+    backgroundColor: COLORS.BACKGROUND.LIGHT,
     borderRadius: BORDER_RADIUS.MD,
     padding: SPACING.MD,
     marginBottom: SPACING.MD,
   },
   detailTitle: {
-    ...TEXT_VARIANT.headingSmall,
+    fontSize: 16,
+    fontWeight: '600',
     color: COLORS.TEXT.LIGHT,
     marginBottom: SPACING.MD,
   },
   detailRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     flexWrap: 'wrap',
-    marginBottom: SPACING.SM,
   },
   detailItem: {
-    flexDirection: 'row',
     alignItems: 'center',
-    marginRight: SPACING.MD,
-    marginBottom: SPACING.SM,
+    marginBottom: SPACING.MD,
+    minWidth: '30%',
   },
   detailLabel: {
-    ...TEXT_VARIANT.bodyDefault,
-    color: COLORS.GRAY[500],
-    marginHorizontal: SPACING.XS,
+    fontSize: 12,
+    color: COLORS.TEXT.MUTED,
+    marginTop: SPACING.XS,
   },
   detailValue: {
-    ...TEXT_VARIANT.bodyDefault,
-    color: COLORS.TEXT.LIGHT,
+    fontSize: 16,
     fontWeight: '600',
+    color: COLORS.TEXT.LIGHT,
   },
   notesContainer: {
-    marginTop: SPACING.SM,
+    marginTop: SPACING.MD,
+    paddingTop: SPACING.MD,
     borderTopWidth: 1,
-    borderTopColor: COLORS.GRAY[800],
-    paddingTop: SPACING.SM,
+    borderTopColor: COLORS.GRAY[700],
   },
   notesTitle: {
-    ...TEXT_VARIANT.labelDefault,
+    fontSize: 14,
+    fontWeight: '600',
     color: COLORS.TEXT.LIGHT,
     marginBottom: SPACING.XS,
   },
   notesText: {
-    ...TEXT_VARIANT.bodyDefault,
-    color: COLORS.TEXT.MUTED,
+    fontSize: 14,
+    color: COLORS.TEXT.DEFAULT,
   },
   setsContainer: {
-    backgroundColor: COLORS.BACKGROUND.DEFAULT,
+    backgroundColor: COLORS.BACKGROUND.LIGHT,
     borderRadius: BORDER_RADIUS.MD,
     padding: SPACING.MD,
     marginBottom: SPACING.MD,
   },
   sectionTitle: {
-    ...TEXT_VARIANT.headingSmall,
+    fontSize: 16,
+    fontWeight: '600',
     color: COLORS.TEXT.LIGHT,
     marginBottom: SPACING.MD,
   },
@@ -411,32 +450,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.SM,
     paddingHorizontal: SPACING.MD,
-    backgroundColor: COLORS.BACKGROUND.DARK,
+    backgroundColor: COLORS.BACKGROUND.DEFAULT,
     borderRadius: BORDER_RADIUS.SM,
     marginBottom: SPACING.SM,
   },
   completedSetItem: {
-    borderLeftWidth: 4,
-    borderLeftColor: COLORS.FEEDBACK.SUCCESS,
+    backgroundColor: 'rgba(76, 175, 80, 0.15)',
   },
   setText: {
-    ...TEXT_VARIANT.bodyDefault,
-    color: COLORS.TEXT.LIGHT,
+    fontSize: 14,
+    color: COLORS.TEXT.DEFAULT,
   },
   markAllButton: {
     marginTop: SPACING.SM,
   },
   timerContainer: {
-    backgroundColor: COLORS.BACKGROUND.DEFAULT,
+    backgroundColor: COLORS.BACKGROUND.LIGHT,
     borderRadius: BORDER_RADIUS.MD,
     padding: SPACING.MD,
+    marginBottom: SPACING.MD,
   },
   modalContent: {
     padding: SPACING.MD,
   },
   modalText: {
-    ...TEXT_VARIANT.bodyDefault,
+    fontSize: 14,
     color: COLORS.TEXT.DEFAULT,
+    textAlign: 'center',
     marginBottom: SPACING.LG,
   },
   modalButtons: {
@@ -445,24 +485,11 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     flex: 1,
-    paddingVertical: SPACING.SM,
-    borderRadius: 8,
-    alignItems: 'center',
     marginHorizontal: SPACING.XS,
   },
-  cancelButton: {
-    backgroundColor: COLORS.GRAY[700],
-  },
-  cancelButtonText: {
-    ...TEXT_VARIANT.labelDefault,
-    color: COLORS.TEXT.LIGHT,
-  },
-  deleteButton: {
-    backgroundColor: COLORS.FEEDBACK.ERROR,
-  },
-  deleteButtonText: {
-    ...TEXT_VARIANT.labelDefault,
-    color: COLORS.TEXT.LIGHT,
+  saveButton: {
+    marginTop: SPACING.MD,
+    marginBottom: SPACING.XL,
   },
 });
 

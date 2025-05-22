@@ -47,6 +47,7 @@ try {
       // Desativar canais realtime para diminuir problemas iniciais
       enabled: false,
     },
+    debug: true // Habilitar logs de depuração
   };
   
   supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, options);
@@ -61,6 +62,23 @@ try {
     }
     if (typeof supabase.auth.signInWithPassword !== 'function') {
       console.error('ERRO: supabase.auth.signInWithPassword não é uma função!');
+    }
+    
+    // Verificar a versão do cliente Supabase
+    console.log('Versão da biblioteca Supabase:', '@supabase/supabase-js');
+    
+    // Verificar se os métodos da API de dados estão disponíveis
+    const testTableAccess = supabase.from('workout_history');
+    console.log('Métodos disponíveis em supabase.from():', 
+      Object.keys(testTableAccess).filter(k => typeof testTableAccess[k] === 'function')
+    );
+    
+    if (testTableAccess.insert) {
+      console.log('Métodos disponíveis em insert:', 
+        Object.keys(testTableAccess.insert).filter(k => typeof testTableAccess.insert[k] === 'function')
+      );
+    } else {
+      console.error('ERRO: método insert não encontrado!');
     }
   } else {
     console.error('Cliente Supabase foi criado mas auth não está disponível!');
@@ -97,38 +115,14 @@ try {
             
           console.log(`[Mock Supabase] Simulando resposta de insert em ${table}:`, mockData);
           
-          // Função select que será retornada diretamente como método do objeto
-          const select = function() {
-            console.log(`[Mock Supabase] Simulando método select() após insert em ${table}`);
-            return {
-              single: async () => {
-                console.log(`[Mock Supabase] Simulando método single() após insert em ${table}`);
-                // Retornar o primeiro item do mockData para simular select().single()
-                return { data: mockData[0], error: null };
-              }
-            };
-          };
-          
-          // Criar o objeto de retorno com o método select diretamente nele
-          const returnObj = { 
-            data: mockData, 
-            error: null,
-            select: select // Adicionando select como método direto
-          };
-          
-          return returnObj;
+          // Retornar os dados mockados sem encadear select
+          return { data: mockData, error: null };
         },
         update: async (values) => {
           console.warn(`[Mock Supabase] Tentativa de update em ${table}:`, values);
           return { 
             eq: () => {
-              return {
-                select: () => {
-                  return {
-                    single: async () => ({ data: { ...values, id: 'mock-id-1' }, error: null })
-                  };
-                }
-              };
+              return { data: { ...values, id: 'mock-id-1' }, error: null };
             }
           };
         },
@@ -180,16 +174,32 @@ if (supabase && supabase.auth) {
       const result = originalFrom.call(this, table);
       
       // Adicionar logging para operações insert
-      const originalInsert = result.insert;
-      result.insert = async function() {
-        try {
-          console.log(`[Supabase Debug] Inserindo na tabela ${table}:`, arguments[0]);
-          return await originalInsert.apply(this, arguments);
-        } catch (error) {
-          console.error(`[Supabase Error] Insert em ${table} falhou:`, error);
-          throw error;
-        }
-      };
+      if (result.insert) {
+        const originalInsert = result.insert;
+        result.insert = async function() {
+          try {
+            console.log(`[Supabase Debug] Inserindo na tabela ${table}:`, arguments[0]);
+            return await originalInsert.apply(this, arguments);
+          } catch (error) {
+            console.error(`[Supabase Error] Insert em ${table} falhou:`, error);
+            throw error;
+          }
+        };
+      }
+      
+      // Adicionar logging para operações update
+      if (result.update) {
+        const originalUpdate = result.update;
+        result.update = async function() {
+          try {
+            console.log(`[Supabase Debug] Atualizando na tabela ${table}:`, arguments[0]);
+            return await originalUpdate.apply(this, arguments);
+          } catch (error) {
+            console.error(`[Supabase Error] Update em ${table} falhou:`, error);
+            throw error;
+          }
+        };
+      }
       
       return result;
     };

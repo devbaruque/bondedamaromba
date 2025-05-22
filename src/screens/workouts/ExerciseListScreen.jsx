@@ -1,12 +1,20 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
   ActivityIndicator, Alert, RefreshControl
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, TEXT_VARIANT } from '../../design';
-import { getExercisesByWorkoutPlan, deleteExercise } from '../../services';
-import { Modal } from '../../components/ui';
+import { COLORS, SPACING, TEXT_VARIANT, BORDER_RADIUS } from '../../design';
+import { 
+  getExercisesByWorkoutPlan, 
+  deleteExercise,
+  startWorkoutSession,
+  endWorkoutSession,
+  logExerciseCompletion,
+  supabase 
+} from '../../services';
+import { Modal, Button } from '../../components/ui';
 import ExerciseCard from '../../components/features/ExerciseCard';
 
 const ExerciseListScreen = ({ navigation, route }) => {
@@ -17,6 +25,9 @@ const ExerciseListScreen = ({ navigation, route }) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedExerciseId, setSelectedExerciseId] = useState(null);
   const [completedExercises, setCompletedExercises] = useState({});
+  const [completedSets, setCompletedSets] = useState({});
+  const [activeSession, setActiveSession] = useState(null);
+  const [isSessionActive, setIsSessionActive] = useState(false);
   
   // Configurar a navegação ao montar o componente
   useEffect(() => {
@@ -33,14 +44,12 @@ const ExerciseListScreen = ({ navigation, route }) => {
     });
   }, [navigation, workout]);
 
-  // Recarregar exercícios quando a tela entrar em foco
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
+  // Verificar se há sessão ativa quando a tela é focada
+  useFocusEffect(
+    useCallback(() => {
       fetchExercises();
-    });
-
-    return unsubscribe;
-  }, [navigation]);
+    }, [])
+  );
 
   // Buscar exercícios
   const fetchExercises = async () => {
@@ -75,9 +84,154 @@ const ExerciseListScreen = ({ navigation, route }) => {
     navigation.navigate('AddExercise', { workoutId: workout.id });
   };
 
+  // Iniciar sessão de treino
+  const handleStartSession = async () => {
+    if (exercises.length === 0) {
+      Alert.alert(
+        'Sem exercícios', 
+        'Adicione pelo menos um exercício ao treino antes de iniciá-lo.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      console.log('Iniciando sessão de treino para:', workout.id);
+      
+      // Verificar conexão com o Supabase antes de prosseguir
+      try {
+        const { data: authData, error: authError } = await supabase.auth.getSession();
+        if (authError) {
+          console.error('Erro de autenticação:', authError);
+          Alert.alert('Erro de conexão', 'Não foi possível conectar ao servidor. Verifique sua conexão com a internet e tente novamente.');
+          setIsLoading(false);
+          return;
+        }
+        console.log('Usuário autenticado:', authData?.session?.user?.id);
+      } catch (authTestError) {
+        console.error('Erro ao testar autenticação:', authTestError);
+        Alert.alert('Erro de conexão', 'Não foi possível conectar ao servidor. Verifique sua conexão com a internet e tente novamente.');
+        setIsLoading(false);
+        return;
+      }
+      
+      console.log('Chamando startWorkoutSession...');
+      const response = await startWorkoutSession(workout.id);
+      console.log('Resposta da API:', JSON.stringify(response));
+      
+      if (response.error) {
+        console.error('Erro ao iniciar sessão de treino:', response.error);
+        Alert.alert('Erro', 'Não foi possível iniciar o treino. Tente novamente.');
+        return;
+      }
+      
+      if (!response.data) {
+        console.error('Dados da sessão não retornados');
+        Alert.alert('Erro', 'Não foi possível iniciar o treino. Tente novamente.');
+        return;
+      }
+      
+      // Verificar se temos um ID válido na resposta
+      if (!response.data.id) {
+        console.error('ID da sessão não encontrado na resposta:', response.data);
+        Alert.alert('Erro', 'Ocorreu um problema ao criar a sessão de treino. Tente novamente.');
+        return;
+      }
+      
+      console.log('Sessão iniciada com sucesso, ID:', response.data.id);
+      setActiveSession(response.data);
+      setIsSessionActive(true);
+      Alert.alert('Treino Iniciado', 'Seu treino foi iniciado! Marque os exercícios conforme for concluindo.');
+      
+    } catch (error) {
+      console.error('Erro ao iniciar sessão de treino:', error);
+      Alert.alert('Erro', 'Não foi possível iniciar o treino. Tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Finalizar sessão de treino
+  const handleEndSession = async () => {
+    try {
+      if (!activeSession || !activeSession.id) {
+        Alert.alert('Erro', 'Não há sessão de treino ativa.');
+        return;
+      }
+      
+      setIsLoading(true);
+      console.log('Finalizando sessão:', activeSession.id);
+      
+      // Enviar logs de exercícios para o servidor
+      const logPromises = Object.keys(completedExercises).map(exerciseId => {
+        if (completedExercises[exerciseId]) {
+          const sets = completedSets[exerciseId] || 0;
+          console.log(`Registrando exercício ${exerciseId} com ${sets} séries`);
+          return logExerciseCompletion(activeSession.id, exerciseId, sets);
+        }
+        return Promise.resolve();
+      });
+      
+      try {
+        const logResults = await Promise.all(logPromises);
+        console.log('Resultados dos logs:', logResults);
+      } catch (logError) {
+        console.error('Erro ao registrar exercícios:', logError);
+        // Continuar mesmo com erro no log
+      }
+      
+      // Finalizar a sessão
+      console.log('Chamando endWorkoutSession...');
+      const { data, error } = await endWorkoutSession(activeSession.id);
+      console.log('Resposta da API:', JSON.stringify({ data, error }));
+      
+      if (error) {
+        console.error('Erro ao finalizar sessão de treino:', error);
+        Alert.alert('Erro', 'Não foi possível finalizar o treino. Seus exercícios foram registrados, mas você pode tentar finalizar novamente.');
+        setIsLoading(false);
+        return;
+      }
+      
+      setActiveSession(null);
+      setIsSessionActive(false);
+      setCompletedExercises({});
+      setCompletedSets({});
+      
+      Alert.alert(
+        'Treino Finalizado', 
+        'Seu treino foi registrado com sucesso!',
+        [
+          {
+            text: 'Ver Histórico',
+            onPress: () => navigation.navigate('Histórico'),
+          },
+          {
+            text: 'OK',
+            style: 'cancel',
+          }
+        ]
+      );
+      
+    } catch (error) {
+      console.error('Erro ao finalizar sessão de treino:', error);
+      Alert.alert('Erro', 'Não foi possível finalizar o treino. Tente novamente.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Navegação para ver detalhes de um exercício
   const handleExercisePress = (exercise) => {
-    navigation.navigate('ExerciseDetail', { exercise, isCompleted: !!completedExercises[exercise.id] });
+    navigation.navigate('ExerciseDetail', { 
+      exercise, 
+      isCompleted: !!completedExercises[exercise.id],
+      onComplete: (completedSetsCount) => {
+        if (isSessionActive) {
+          handleToggleComplete(exercise.id, completedSetsCount);
+        }
+      }
+    });
   };
 
   // Editar exercício
@@ -118,11 +272,56 @@ const ExerciseListScreen = ({ navigation, route }) => {
   };
 
   // Alternar status de conclusão
-  const handleToggleComplete = (exerciseId) => {
+  const handleToggleComplete = (exerciseId, setsCompleted = 0) => {
+    // Se não há sessão ativa e está tentando marcar como completo, perguntar se quer iniciar
+    if (!isSessionActive && !completedExercises[exerciseId]) {
+      Alert.alert(
+        'Iniciar Treino',
+        'Deseja iniciar um treino para registrar seu progresso?',
+        [
+          {
+            text: 'Não',
+            style: 'cancel',
+          },
+          {
+            text: 'Sim',
+            onPress: async () => {
+              await handleStartSession();
+              // Depois de iniciar a sessão, marcar o exercício
+              setCompletedExercises(prev => ({
+                ...prev,
+                [exerciseId]: true
+              }));
+              setCompletedSets(prev => ({
+                ...prev,
+                [exerciseId]: setsCompleted
+              }));
+            }
+          },
+        ]
+      );
+      return;
+    }
+    
+    // Atualizar estado de conclusão
     setCompletedExercises(prev => ({
       ...prev,
       [exerciseId]: !prev[exerciseId]
     }));
+    
+    // Atualizar séries completadas
+    if (setsCompleted > 0) {
+      setCompletedSets(prev => ({
+        ...prev,
+        [exerciseId]: setsCompleted
+      }));
+    }
+    
+    // Se estiver em uma sessão ativa, registrar a alteração no servidor
+    if (isSessionActive && activeSession?.id) {
+      // Aqui vamos apenas atualizar o estado local
+      // Os logs serão enviados ao servidor quando o treino for finalizado
+    }
   };
 
   // Renderizar um item da lista de exercícios
@@ -132,9 +331,32 @@ const ExerciseListScreen = ({ navigation, route }) => {
         exercise={item}
         onPress={() => handleExercisePress(item)}
         isCompleted={!!completedExercises[item.id]}
-        onToggleComplete={handleToggleComplete}
+        onToggleComplete={() => handleToggleComplete(item.id)}
         onEdit={() => handleEditExercise(item)}
         onDelete={() => confirmDeleteExercise(item.id)}
+      />
+    );
+  };
+
+  // Botão de iniciar ou finalizar treino
+  const renderSessionButton = () => {
+    if (exercises.length === 0) {
+      return null;
+    }
+    
+    return isSessionActive ? (
+      <Button 
+        title="Finalizar Treino" 
+        variant="primary" 
+        onPress={handleEndSession}
+        style={styles.sessionButton}
+      />
+    ) : (
+      <Button 
+        title="Iniciar Treino" 
+        variant="primary" 
+        onPress={handleStartSession}
+        style={styles.sessionButton}
       />
     );
   };
@@ -187,6 +409,7 @@ const ExerciseListScreen = ({ navigation, route }) => {
             tintColor={COLORS.PRIMARY}
           />
         }
+        ListFooterComponent={renderSessionButton}
       />
     );
   };
@@ -205,21 +428,19 @@ const ExerciseListScreen = ({ navigation, route }) => {
           <Text style={styles.modalText}>
             Tem certeza que deseja excluir este exercício? Esta ação não pode ser desfeita.
           </Text>
-          
           <View style={styles.modalButtons}>
-            <TouchableOpacity
-              style={[styles.modalButton, styles.cancelButton]}
+            <Button 
+              title="Cancelar" 
+              variant="outline" 
               onPress={() => setShowDeleteModal(false)}
-            >
-              <Text style={styles.cancelButtonText}>Cancelar</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.modalButton, styles.deleteButton]}
+              style={styles.modalButton}
+            />
+            <Button 
+              title="Excluir" 
+              variant="danger" 
               onPress={handleDeleteExercise}
-            >
-              <Text style={styles.deleteButtonText}>Excluir</Text>
-            </TouchableOpacity>
+              style={styles.modalButton}
+            />
           </View>
         </View>
       </Modal>
@@ -232,48 +453,51 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.BACKGROUND.DARK,
   },
-  headerButton: {
-    marginRight: SPACING.MD,
-  },
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: SPACING.XL,
+    padding: SPACING.XL,
+  },
+  exerciseList: {
+    padding: SPACING.MD,
+    paddingBottom: SPACING.XL * 3,
   },
   emptyText: {
-    ...TEXT_VARIANT.headingSmall,
+    fontSize: 18,
+    fontWeight: '600',
     color: COLORS.TEXT.LIGHT,
+    marginBottom: SPACING.SM,
     textAlign: 'center',
   },
   emptySubtext: {
-    ...TEXT_VARIANT.bodyDefault,
-    color: COLORS.GRAY[500],
+    fontSize: 14,
+    color: COLORS.GRAY[400],
     textAlign: 'center',
-    marginTop: SPACING.SM,
     marginBottom: SPACING.LG,
   },
   emptyButton: {
     backgroundColor: COLORS.PRIMARY,
-    paddingVertical: SPACING.SM,
+    paddingVertical: SPACING.MD,
     paddingHorizontal: SPACING.XL,
-    borderRadius: 8,
-    alignSelf: 'center',
+    borderRadius: BORDER_RADIUS.MD,
   },
   emptyButtonText: {
-    ...TEXT_VARIANT.labelDefault,
     color: COLORS.TEXT.LIGHT,
+    fontWeight: '600',
+    fontSize: 16,
   },
-  exerciseList: {
-    padding: SPACING.MD,
+  headerButton: {
+    padding: SPACING.XS,
   },
   modalContent: {
     padding: SPACING.MD,
   },
   modalText: {
-    ...TEXT_VARIANT.bodyDefault,
+    fontSize: 16,
     color: COLORS.TEXT.DEFAULT,
     marginBottom: SPACING.LG,
+    textAlign: 'center',
   },
   modalButtons: {
     flexDirection: 'row',
@@ -281,24 +505,12 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     flex: 1,
-    paddingVertical: SPACING.SM,
-    borderRadius: 8,
-    alignItems: 'center',
     marginHorizontal: SPACING.XS,
   },
-  cancelButton: {
-    backgroundColor: COLORS.GRAY[700],
-  },
-  cancelButtonText: {
-    ...TEXT_VARIANT.labelDefault,
-    color: COLORS.TEXT.LIGHT,
-  },
-  deleteButton: {
-    backgroundColor: COLORS.FEEDBACK.ERROR,
-  },
-  deleteButtonText: {
-    ...TEXT_VARIANT.labelDefault,
-    color: COLORS.TEXT.LIGHT,
+  sessionButton: {
+    marginTop: SPACING.LG,
+    marginBottom: SPACING.XL,
+    marginHorizontal: SPACING.MD,
   },
 });
 
