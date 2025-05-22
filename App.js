@@ -5,6 +5,8 @@ import 'react-native-url-polyfill/auto';
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { View, StyleSheet, LogBox } from 'react-native';
+import { Provider as PaperProvider } from 'react-native-paper';
+import { en, registerTranslation } from 'react-native-paper-dates';
 
 // Importações do projeto
 import { AuthProvider } from './src/contexts/AuthContext';
@@ -13,6 +15,9 @@ import RootNavigator from './src/navigation';
 import { COLORS } from './src/design';
 import WorkoutTimerOverlay from './src/components/features/WorkoutTimerOverlay';
 import CongratsAnimation from './src/components/features/CongratsAnimation';
+
+// Registrar traduções para react-native-paper-dates
+registerTranslation('en', en);
 
 // Verificar se estamos em modo de desenvolvimento
 const isDev = process.env.NODE_ENV !== 'production';
@@ -41,14 +46,16 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <AuthProvider>
-        <WorkoutTimerProvider>
-          <StatusBar style="light" backgroundColor={COLORS.BACKGROUND.DARK} />
-          <RootNavigator />
-          <WorkoutTimerOverlay />
-          <CongratsAnimation />
-        </WorkoutTimerProvider>
-      </AuthProvider>
+      <PaperProvider>
+        <AuthProvider>
+          <WorkoutTimerProvider>
+            <StatusBar style="light" backgroundColor={COLORS.BACKGROUND.DARK} />
+            <RootNavigator />
+            <WorkoutTimerOverlay />
+            <CongratsAnimation />
+          </WorkoutTimerProvider>
+        </AuthProvider>
+      </PaperProvider>
     </View>
   );
 }

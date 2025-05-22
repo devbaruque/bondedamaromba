@@ -10,20 +10,49 @@ import { ptBR } from 'date-fns/locale';
 
 import { COLORS, SPACING, TEXT_VARIANT, BORDER_RADIUS } from '../../design';
 import { getWorkoutSessionDetails } from '../../services';
+import supabase from '../../services/supabase';
 
 const WorkoutSessionDetailsScreen = ({ navigation, route }) => {
-  const { sessionId } = route.params;
-  const [sessionData, setSessionData] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  // Garantir que route.params exista para evitar erros
+  const params = route?.params || {};
+  const { sessionId, sessionData: initialSessionData } = params;
+  const [sessionData, setSessionData] = useState(initialSessionData || null);
+  const [isLoading, setIsLoading] = useState(!initialSessionData);
 
   // Buscar detalhes da sessão
   useEffect(() => {
-    fetchSessionDetails();
-  }, [sessionId]);
+    console.log('WorkoutSessionDetailsScreen - useEffect - Parâmetros recebidos:', {
+      sessionId,
+      hasInitialData: !!initialSessionData,
+      route: route ? 'existe' : 'undefined',
+      params: params ? 'existe' : 'undefined'
+    });
+    
+    // Verificação de segurança para parâmetros
+    if (!params || (!sessionId && !initialSessionData)) {
+      console.error('WorkoutSessionDetailsScreen - Parâmetros inválidos ou ausentes');
+      Alert.alert(
+        'Erro', 
+        'Não foi possível carregar os detalhes da sessão devido a parâmetros inválidos.', 
+        [{ text: 'Voltar', onPress: () => navigation.goBack() }]
+      );
+      return;
+    }
+    
+    if (initialSessionData) {
+      console.log('WorkoutSessionDetailsScreen - Usando dados pré-carregados');
+      setSessionData(initialSessionData);
+      setIsLoading(false);
+    } else {
+      fetchSessionDetails();
+    }
+  }, [sessionId, initialSessionData]);
 
-  const fetchSessionDetails = async () => {
+  const fetchSessionDetails = async (retryCount = 0) => {
     try {
+      console.log(`WorkoutSessionDetailsScreen - Iniciando busca de detalhes, sessionId: ${sessionId}, tentativa: ${retryCount + 1}`);
       if (!sessionId) {
+        console.error('WorkoutSessionDetailsScreen - sessionId não fornecido');
         Alert.alert('Erro', 'ID da sessão não fornecido');
         navigation.goBack();
         return;
@@ -31,18 +60,70 @@ const WorkoutSessionDetailsScreen = ({ navigation, route }) => {
 
       setIsLoading(true);
       
+      console.log('WorkoutSessionDetailsScreen - Chamando API getWorkoutSessionDetails');
       const { data, error } = await getWorkoutSessionDetails(sessionId);
       
       if (error) {
-        console.error('Erro ao buscar detalhes da sessão:', error);
+        console.error('WorkoutSessionDetailsScreen - Erro ao buscar detalhes da sessão:', error);
+        
+        // Tentar novamente em caso de erro de rede
+        if (retryCount < 2 && (error.message?.includes('network') || error.message?.includes('timeout'))) {
+          console.log(`WorkoutSessionDetailsScreen - Erro de rede, tentando novamente (${retryCount + 1}/3)`);
+          setIsLoading(false);
+          setTimeout(() => {
+            fetchSessionDetails(retryCount + 1);
+          }, 1000 * (retryCount + 1)); // Aumenta o tempo entre tentativas
+          return;
+        }
+        
         Alert.alert('Erro', 'Não foi possível carregar os detalhes desta sessão.');
         navigation.goBack();
         return;
       }
       
+      if (!data) {
+        console.error('WorkoutSessionDetailsScreen - Nenhum dado retornado para a sessão:', sessionId);
+        
+        // Verificar se está relacionado a problemas de autenticação
+        try {
+          const authSession = await supabase.auth.getSession();
+          if (!authSession?.data?.session) {
+            console.error('WorkoutSessionDetailsScreen - Usuário não autenticado');
+            Alert.alert('Sessão expirada', 'Sua sessão expirou. Por favor, faça login novamente.');
+            // Aqui você poderia navegar para a tela de login
+            navigation.goBack();
+            return;
+          }
+        } catch (authError) {
+          console.error('WorkoutSessionDetailsScreen - Erro ao verificar autenticação:', authError);
+        }
+        
+        Alert.alert('Erro', 'Não foi possível encontrar os dados desta sessão.');
+        navigation.goBack();
+        return;
+      }
+      
+      console.log('WorkoutSessionDetailsScreen - Dados recebidos com sucesso:', {
+        id: data.id,
+        workout_plan_name: data.workout_plans?.name,
+        has_exercise_logs: !!data.exercise_logs?.length,
+        exercise_logs_count: data.exercise_logs?.length || 0
+      });
+      
       setSessionData(data);
     } catch (error) {
-      console.error('Erro ao buscar detalhes da sessão:', error);
+      console.error('WorkoutSessionDetailsScreen - Erro não tratado:', error);
+      
+      // Tentar novamente em caso de exceção genérica, apenas uma vez
+      if (retryCount === 0) {
+        console.log('WorkoutSessionDetailsScreen - Tentando novamente após erro não tratado');
+        setIsLoading(false);
+        setTimeout(() => {
+          fetchSessionDetails(retryCount + 1);
+        }, 1000);
+        return;
+      }
+      
       Alert.alert('Erro', 'Não foi possível carregar os detalhes desta sessão.');
       navigation.goBack();
     } finally {

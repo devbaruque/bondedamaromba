@@ -289,8 +289,7 @@ O **Bonde da Maromba** é um aplicativo mobile desenvolvido em React Native e Su
 
 ### Fase 4: Histórico e Refinamento (2-3 semanas)
 - [x] Registro de histórico de treinos
-- [ ] Implementação do calendário e filtros
-- [ ] Tela de estatísticas básicas
+- [x] Implementação do calendário e filtros
 - [ ] Testes de usabilidade
 - [ ] Otimizações de performance
 

@@ -17,7 +17,6 @@ import EditExerciseScreen from '../screens/workouts/EditExerciseScreen';
 import ExerciseDetailScreen from '../screens/workouts/ExerciseDetailScreen';
 import WorkoutHistoryScreen from '../screens/history/WorkoutHistoryScreen';
 import WorkoutSessionDetailsScreen from '../screens/history/WorkoutSessionDetailsScreen';
-import WorkoutStatsScreen from '../screens/history/WorkoutStatsScreen';
 import LoadingScreen from '../screens/LoadingScreen';
 
 // Cores do tema
@@ -26,7 +25,6 @@ import { COLORS } from '../design';
 // Criando os navegadores
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
-const TopTab = createMaterialTopTabNavigator();
 
 // Navegador para rotas de autenticação
 const AuthNavigator = () => {
@@ -88,49 +86,11 @@ const WorkoutsNavigator = () => {
   );
 };
 
-// Navegador com abas para o histórico
-const HistoryTopTabNavigator = () => {
-  return (
-    <TopTab.Navigator
-      screenOptions={{
-        tabBarStyle: {
-          backgroundColor: COLORS.BACKGROUND.DEFAULT,
-          paddingTop: 10,
-          elevation: 0,
-          shadowOpacity: 0,
-          borderBottomWidth: 1,
-          borderBottomColor: COLORS.GRAY[800],
-        },
-        tabBarActiveTintColor: COLORS.PRIMARY,
-        tabBarInactiveTintColor: COLORS.GRAY[500],
-        tabBarIndicatorStyle: {
-          backgroundColor: COLORS.PRIMARY,
-          height: 3,
-        },
-        tabBarLabelStyle: {
-          fontSize: 14,
-          fontWeight: '600',
-          textTransform: 'none',
-        },
-      }}
-    >
-      <TopTab.Screen 
-        name="Atividades" 
-        component={WorkoutHistoryScreen} 
-      />
-      <TopTab.Screen 
-        name="Estatísticas" 
-        component={WorkoutStatsScreen} 
-      />
-    </TopTab.Navigator>
-  );
-};
-
 // Navegador para histórico
 const HistoryNavigator = () => {
   return (
     <Stack.Navigator
-      initialRouteName="HistoryTabs"
+      initialRouteName="WorkoutHistory"
       screenOptions={{ 
         headerStyle: {
           backgroundColor: COLORS.BACKGROUND.DEFAULT,
@@ -143,8 +103,8 @@ const HistoryNavigator = () => {
       }}
     >
       <Stack.Screen 
-        name="HistoryTabs" 
-        component={HistoryTopTabNavigator}
+        name="WorkoutHistory" 
+        component={WorkoutHistoryScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen 
