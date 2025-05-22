@@ -452,17 +452,6 @@ const WorkoutSelectionScreen = ({ navigation }) => {
           }}
         />
       </Modal>
-      
-      {/* FAB para adicionar treino */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => {
-          setShowAddModal(true);
-          console.log('Abrindo modal para criar novo treino');
-        }}
-      >
-        <Ionicons name="add" size={30} color={COLORS.TEXT.LIGHT} />
-      </TouchableOpacity>
     </View>
   );
 };
@@ -544,22 +533,6 @@ const styles = StyleSheet.create({
     color: COLORS.TEXT.LIGHT,
     fontWeight: '600',
     fontSize: 16,
-  },
-  fab: {
-    position: 'absolute',
-    right: SPACING.LG,
-    bottom: SPACING.LG,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: COLORS.PRIMARY,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: COLORS.BACKGROUND.DARK,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
   },
   separator: {
     height: SPACING.MD,

@@ -10,7 +10,6 @@ import { View, StyleSheet, LogBox } from 'react-native';
 import { AuthProvider } from './src/contexts/AuthContext';
 import RootNavigator from './src/navigation';
 import { COLORS } from './src/design';
-import { DevTools } from './src/components/dev';
 
 // Verificar se estamos em modo de desenvolvimento
 const isDev = process.env.NODE_ENV !== 'production';
@@ -42,7 +41,6 @@ export default function App() {
       <AuthProvider>
         <StatusBar style="light" backgroundColor={COLORS.BACKGROUND.DARK} />
         <RootNavigator />
-        {isDev && <DevTools />}
       </AuthProvider>
     </View>
   );
