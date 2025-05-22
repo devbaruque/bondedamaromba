@@ -260,9 +260,11 @@ const styles = StyleSheet.create({
   cancelButton: {
     flex: 1,
     marginRight: SPACING.SM,
+    minWidth: 120,
   },
   submitButton: {
-    flex: 2,
+    flex: 1,
+    minWidth: 120,
   },
 });
 

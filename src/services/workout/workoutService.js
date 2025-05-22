@@ -60,7 +60,7 @@ export async function createWorkoutPlan(workoutPlan) {
       throw new Error('Usuário não autenticado');
     }
     
-    console.log('Criando workout plan com user_id:', sessionData.session.user.id);
+    console.log('Criando workout plan with user_id:', sessionData.session.user.id);
     
     // Garantir que o user_id está definido
     const workoutWithUserId = {
@@ -109,6 +109,14 @@ export async function createWorkoutPlan(workoutPlan) {
  */
 export async function updateWorkoutPlan(id, updates) {
   try {
+    console.log(`Atualizando plano de treino com ID ${id}:`, updates);
+    
+    if (!id) {
+      console.error('ID do treino não fornecido para atualização');
+      throw new Error('ID do treino não fornecido para atualização');
+    }
+    
+    // Executar a atualização em uma única operação
     const { data, error } = await supabase
       .from('workout_plans')
       .update(updates)
@@ -116,7 +124,12 @@ export async function updateWorkoutPlan(id, updates) {
       .select()
       .single();
     
-    if (error) throw error;
+    if (error) {
+      console.error(`Erro ao atualizar plano de treino com ID ${id}:`, error);
+      throw error;
+    }
+    
+    console.log(`Plano de treino ${id} atualizado com sucesso:`, data);
     return { data };
   } catch (error) {
     console.error(`Erro ao atualizar plano de treino com ID ${id}:`, error);

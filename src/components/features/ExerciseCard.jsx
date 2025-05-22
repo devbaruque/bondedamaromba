@@ -205,6 +205,7 @@ const styles = StyleSheet.create({
   completedContainer: {
     borderLeftWidth: 4,
     borderLeftColor: COLORS.FEEDBACK.SUCCESS,
+    backgroundColor: 'rgba(76, 175, 80, 0.1)', // Fundo verde claro para destacar exercícios completados
   },
   imagesContainer: {
     maxHeight: 120,

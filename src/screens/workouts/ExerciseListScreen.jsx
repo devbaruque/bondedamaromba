@@ -46,6 +46,9 @@ const ExerciseListScreen = ({ navigation, route }) => {
   // Exercício sendo destacado durante a animação
   const [highlightedExerciseId, setHighlightedExerciseId] = useState(null);
   
+  // State para mostrar o modal de conclusão
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  
   // Configurar a navegação ao montar o componente
   useEffect(() => {
     navigation.setOptions({
@@ -177,6 +180,23 @@ const ExerciseListScreen = ({ navigation, route }) => {
     }
   }, [exercises.length, workout.id, workout.name, startTimer]);
 
+  // Função para calcular métricas do treino concluído
+  const calculateWorkoutMetrics = useCallback(() => {
+    const totalExercises = exercises.length;
+    const completedExercisesCount = Object.keys(completedExercises).length;
+    const totalSets = exercises.reduce((acc, exercise) => acc + (exercise.sets || 0), 0);
+    const completedSetsCount = Object.values(completedSets).reduce((acc, sets) => acc + sets, 0);
+    
+    return {
+      totalExercises,
+      completedExercisesCount,
+      completionPercentage: totalExercises > 0 ? Math.round((completedExercisesCount / totalExercises) * 100) : 0,
+      totalSets,
+      completedSetsCount,
+      setsCompletionPercentage: totalSets > 0 ? Math.round((completedSetsCount / totalSets) * 100) : 0
+    };
+  }, [exercises, completedExercises, completedSets]);
+
   // Finalizar sessão de treino
   const handleEndSession = useCallback(async () => {
     try {
@@ -186,10 +206,9 @@ const ExerciseListScreen = ({ navigation, route }) => {
       }
       
       setIsLoading(true);
-      console.log('Finalizando sessão:', activeSession.id);
-      
-      // Iniciar animação de marcação de exercícios
+      // Alterar o estado para indicar que estamos finalizando - isso afetará o texto do botão
       setAnimatingCompletion(true);
+      console.log('Finalizando sessão:', activeSession.id);
       
       // Marcar exercícios um por um com pequeno delay para efeito visual
       const markExercisesSequentially = async () => {
@@ -264,7 +283,9 @@ const ExerciseListScreen = ({ navigation, route }) => {
         finishWorkout();
         setIsSessionActive(false);
         setActiveSession(null);
-        Alert.alert('Treino Concluído', 'Parabéns! Seu treino foi concluído e registrado com sucesso.');
+        
+        // Mostrar o modal de conclusão personalizado em vez de um Alert
+        setShowCompletionModal(true);
       }
       
     } catch (error) {
@@ -276,6 +297,17 @@ const ExerciseListScreen = ({ navigation, route }) => {
       setHighlightedExerciseId(null);
     }
   }, [activeSession, exercises, completedSets, finishWorkout]);
+
+  // Fechar o modal de conclusão
+  const handleCloseCompletionModal = useCallback(() => {
+    setShowCompletionModal(false);
+    // Manter os exercícios marcados como completos por alguns segundos para dar feedback visual
+    setTimeout(() => {
+      // Resetar os estados de exercícios completos depois de 3 segundos
+      setCompletedExercises({});
+      setCompletedSets({});
+    }, 3000);
+  }, []);
 
   // Navegar para detalhes do exercício
   const handleExercisePress = useCallback((exercise) => {
@@ -439,26 +471,26 @@ const ExerciseListScreen = ({ navigation, route }) => {
   const renderSessionButton = useCallback(() => {
     if (isSessionActive) {
       return (
-        <TouchableOpacity 
-          style={[styles.sessionButton, styles.endSessionButton]}
+        <Button 
+          title={animatingCompletion ? 'Finalizando...' : 'Finalizar Treino'}
           onPress={handleEndSession}
           disabled={animatingCompletion}
-        >
-          <Ionicons name="checkmark-circle" size={20} color={COLORS.TEXT.LIGHT} />
-          <Text style={styles.sessionButtonText}>
-            {animatingCompletion ? 'Finalizando...' : 'Finalizar Treino'}
-          </Text>
-        </TouchableOpacity>
+          leftIcon={
+            <Ionicons name="checkmark-circle" size={20} color={COLORS.TEXT.LIGHT} />
+          }
+          style={[styles.actionButton, styles.endSessionButton]}
+        />
       );
     } else {
       return (
-        <TouchableOpacity 
-          style={styles.sessionButton}
+        <Button 
+          title="Iniciar Treino"
           onPress={handleStartSession}
-        >
-          <Ionicons name="play-circle" size={20} color={COLORS.TEXT.LIGHT} />
-          <Text style={styles.sessionButtonText}>Iniciar Treino</Text>
-        </TouchableOpacity>
+          leftIcon={
+            <Ionicons name="play-circle" size={20} color={COLORS.TEXT.LIGHT} />
+          }
+          style={styles.actionButton}
+        />
       );
     }
   }, [isSessionActive, handleEndSession, animatingCompletion, handleStartSession]);
@@ -550,7 +582,7 @@ const ExerciseListScreen = ({ navigation, route }) => {
         <Text style={styles.modalText}>
           Tem certeza que deseja excluir este exercício? Esta ação não pode ser desfeita.
         </Text>
-        <View style={styles.modalActions}>
+        <View style={styles.modalButtons}>
           <Button 
             title="Cancelar" 
             onPress={() => setShowDeleteModal(false)} 
@@ -560,6 +592,51 @@ const ExerciseListScreen = ({ navigation, route }) => {
             title="Excluir" 
             onPress={handleDeleteExercise} 
             type="danger"
+          />
+        </View>
+      </Modal>
+      
+      <Modal
+        visible={showCompletionModal}
+        title="Treino Concluído!"
+        onClose={handleCloseCompletionModal}
+      >
+        <View style={styles.completionModalContent}>
+          <View style={styles.completionIconContainer}>
+            <Ionicons name="checkmark-circle" size={60} color={COLORS.FEEDBACK.SUCCESS} />
+          </View>
+          
+          <Text style={styles.completionTitle}>
+            Parabéns!
+          </Text>
+          
+          <Text style={styles.completionMessage}>
+            Você concluiu seu treino com sucesso.
+          </Text>
+          
+          {showCompletionModal && (
+            <View style={styles.metricsContainer}>
+              <View style={styles.metricItem}>
+                <Text style={styles.metricValue}>{calculateWorkoutMetrics().completedExercisesCount}/{calculateWorkoutMetrics().totalExercises}</Text>
+                <Text style={styles.metricLabel}>Exercícios</Text>
+              </View>
+              
+              <View style={styles.metricItem}>
+                <Text style={styles.metricValue}>{calculateWorkoutMetrics().completedSetsCount}/{calculateWorkoutMetrics().totalSets}</Text>
+                <Text style={styles.metricLabel}>Séries</Text>
+              </View>
+              
+              <View style={styles.metricItem}>
+                <Text style={styles.metricValue}>{calculateWorkoutMetrics().completionPercentage}%</Text>
+                <Text style={styles.metricLabel}>Conclusão</Text>
+              </View>
+            </View>
+          )}
+          
+          <Button
+            title="Fechar"
+            onPress={handleCloseCompletionModal}
+            style={styles.completionButton}
           />
         </View>
       </Modal>
@@ -626,20 +703,6 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: SPACING.XS,
   },
-  sessionButton: {
-    marginTop: SPACING.LG,
-    marginBottom: SPACING.XL,
-    marginHorizontal: SPACING.MD,
-  },
-  sessionButtonText: {
-    color: COLORS.TEXT.LIGHT,
-    fontWeight: '600',
-    fontSize: 16,
-    marginLeft: SPACING.SM,
-  },
-  endSessionButton: {
-    backgroundColor: COLORS.PRIMARY,
-  },
   bottomBar: {
     position: 'absolute',
     bottom: 0,
@@ -673,6 +736,58 @@ const styles = StyleSheet.create({
   listContent: {
     padding: SPACING.MD,
     paddingBottom: SPACING.XL * 3,
+  },
+  actionButton: {
+    marginVertical: SPACING.MD,
+    width: '100%',
+  },
+  endSessionButton: {
+    backgroundColor: COLORS.PRIMARY,
+  },
+  completionModalContent: {
+    alignItems: 'center',
+    padding: SPACING.MD,
+  },
+  completionIconContainer: {
+    marginVertical: SPACING.MD,
+    padding: SPACING.MD,
+    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+    borderRadius: 50,
+  },
+  completionTitle: {
+    ...TEXT_VARIANT.headingLarge,
+    color: COLORS.TEXT.LIGHT,
+    marginBottom: SPACING.SM,
+  },
+  completionMessage: {
+    ...TEXT_VARIANT.bodyDefault,
+    color: COLORS.TEXT.DEFAULT,
+    textAlign: 'center',
+    marginBottom: SPACING.LG,
+  },
+  metricsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    width: '100%',
+    marginBottom: SPACING.LG,
+    backgroundColor: COLORS.BACKGROUND.LIGHT,
+    borderRadius: BORDER_RADIUS.MD,
+    padding: SPACING.MD,
+  },
+  metricItem: {
+    alignItems: 'center',
+  },
+  metricValue: {
+    ...TEXT_VARIANT.headingMedium,
+    color: COLORS.PRIMARY,
+  },
+  metricLabel: {
+    ...TEXT_VARIANT.labelDefault,
+    color: COLORS.TEXT.MUTED,
+  },
+  completionButton: {
+    marginTop: SPACING.MD,
+    width: '100%',
   },
 });
 
