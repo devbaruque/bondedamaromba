@@ -19,6 +19,7 @@ import ExerciseDetailScreen from '../screens/workouts/ExerciseDetailScreen';
 import WorkoutHistoryScreen from '../screens/history/WorkoutHistoryScreen';
 import WorkoutSessionDetailsScreen from '../screens/history/WorkoutSessionDetailsScreen';
 import LoadingScreen from '../screens/LoadingScreen';
+import EditWorkoutPlanScreen from '../screens/EditWorkoutPlanScreen';
 
 // Cores do tema
 import { COLORS, SPACING, BORDER_RADIUS } from '../design';
@@ -205,6 +206,11 @@ const WorkoutsNavigator = () => {
         name="ExerciseDetail" 
         component={ExerciseDetailScreen}
         options={{ title: "Detalhes do Exercício" }}
+      />
+      <Stack.Screen 
+        name="EditWorkoutPlan" 
+        component={EditWorkoutPlanScreen}
+        options={{ title: "Editar Plano de Treino" }}
       />
     </Stack.Navigator>
   );

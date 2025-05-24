@@ -4,11 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from '../constants/env';
 
-// Log mais detalhado para depuração
-console.log('Inicializando cliente Supabase:', {
-  url: SUPABASE_URL,
-  anonKey: SUPABASE_ANON_KEY ? SUPABASE_ANON_KEY.substring(0, 10) + '...' : 'Não definida'
-});
+// Adicionar log para debug da versão e configuração
+console.log('Inicializando cliente Supabase com URL:', SUPABASE_URL);
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.error('ERRO CRÍTICO: Variáveis de ambiente Supabase não definidas corretamente!');
@@ -47,7 +44,7 @@ try {
       // Desativar canais realtime para diminuir problemas iniciais
       enabled: false,
     },
-    debug: true // Habilitar logs de depuração
+    debug: __DEV__ // Habilitar logs de depuração apenas em desenvolvimento
   };
   
   supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, options);
@@ -64,21 +61,24 @@ try {
       console.error('ERRO: supabase.auth.signInWithPassword não é uma função!');
     }
     
-    // Verificar a versão do cliente Supabase
-    console.log('Versão da biblioteca Supabase:', '@supabase/supabase-js');
+    // Verificar a versão do cliente Supabase via package.json
+    console.log('Cliente Supabase inicializado corretamente');
     
     // Verificar se os métodos da API de dados estão disponíveis
-    const testTableAccess = supabase.from('workout_history');
-    console.log('Métodos disponíveis em supabase.from():', 
-      Object.keys(testTableAccess).filter(k => typeof testTableAccess[k] === 'function')
-    );
+    const testTableAccess = supabase.from('workout_plans');
     
-    if (testTableAccess.insert) {
-      console.log('Métodos disponíveis em insert:', 
-        Object.keys(testTableAccess.insert).filter(k => typeof testTableAccess.insert[k] === 'function')
-      );
+    // Métodos importantes para edição
+    if (testTableAccess.update) {
+      console.log('Método update encontrado');
+      // Verificar se os métodos de filtro estão disponíveis
+      const updateMethods = Object.getOwnPropertyNames(Object.getPrototypeOf(testTableAccess.update({})));
+      console.log('Métodos disponíveis em update:', updateMethods);
+      
+      if (!updateMethods.includes('eq') && !updateMethods.includes('match') && !updateMethods.includes('filter')) {
+        console.warn('ATENÇÃO: Métodos eq/match/filter não encontrados no update! Usando implementação de fallback.');
+      }
     } else {
-      console.error('ERRO: método insert não encontrado!');
+      console.error('ERRO: método update não encontrado!');
     }
   } else {
     console.error('Cliente Supabase foi criado mas auth não está disponível!');
@@ -101,9 +101,12 @@ try {
           console.warn(`[Mock Supabase] Tentativa de select ${columns || '*'} em ${table}`);
           return {
             eq: () => ({ data: null, error: { message: 'Cliente Supabase não inicializado' } }),
+            filter: () => ({ data: null, error: { message: 'Cliente Supabase não inicializado' } }),
+            match: () => ({ data: null, error: { message: 'Cliente Supabase não inicializado' } }),
             order: () => ({ data: null, error: { message: 'Cliente Supabase não inicializado' } }),
             limit: () => ({ data: null, error: { message: 'Cliente Supabase não inicializado' } }),
-            single: async () => ({ data: null, error: { message: 'Cliente Supabase não inicializado' } })
+            single: async () => ({ data: null, error: { message: 'Cliente Supabase não inicializado' } }),
+            maybeSingle: async () => ({ data: null, error: { message: 'Cliente Supabase não inicializado' } })
           };
         },
         insert: async (values) => {
@@ -115,20 +118,27 @@ try {
             
           console.log(`[Mock Supabase] Simulando resposta de insert em ${table}:`, mockData);
           
-          // Retornar os dados mockados sem encadear select
-          return { data: mockData, error: null };
-        },
-        update: async (values) => {
-          console.warn(`[Mock Supabase] Tentativa de update em ${table}:`, values);
+          // Retornar os dados mockados com método select
           return { 
-            eq: () => {
-              return { data: { ...values, id: 'mock-id-1' }, error: null };
-            }
+            data: mockData, 
+            error: null,
+            select: () => ({ data: mockData, error: null })
           };
         },
-        delete: async () => {
+        update: (values) => {
+          console.warn(`[Mock Supabase] Tentativa de update em ${table}:`, values);
+          return { 
+            match: async () => ({ data: [{ ...values, id: 'mock-id-1' }], error: null }),
+            filter: async () => ({ data: [{ ...values, id: 'mock-id-1' }], error: null }),
+            eq: async () => ({ data: [{ ...values, id: 'mock-id-1' }], error: null }),
+            select: () => ({ data: [{ ...values, id: 'mock-id-1' }], error: null })
+          };
+        },
+        delete: () => {
           console.warn(`[Mock Supabase] Tentativa de delete em ${table}`);
           return { 
+            match: async () => ({ success: true, error: null }),
+            filter: async () => ({ success: true, error: null }),
             eq: async () => ({ success: true, error: null })
           };
         },
@@ -148,62 +158,14 @@ try {
           }
         };
       }
+    },
+    rpc: async (procedure, params) => {
+      console.warn(`[Mock Supabase] Tentativa de executar RPC ${procedure}:`, params);
+      return { data: null, error: null };
     }
   };
 }
 
-// Verificar se temos acesso ao auth antes de instrumentar
-if (supabase && supabase.auth) {
-  // Adicionar logs para operações de autenticação
-  const originalGetSession = supabase.auth.getSession;
-  supabase.auth.getSession = async function() {
-    try {
-      console.log('[Supabase Auth Debug] Obtendo sessão');
-      return await originalGetSession.apply(this);
-    } catch (error) {
-      console.error('[Supabase Auth Error] getSession falhou:', error);
-      throw error;
-    }
-  };
-
-  // Adicionar logs para operações de banco de dados
-  if (supabase.from) {
-    const originalFrom = supabase.from;
-    supabase.from = function(table) {
-      console.log(`[Supabase Debug] Acessando tabela ${table}`);
-      const result = originalFrom.call(this, table);
-      
-      // Adicionar logging para operações insert
-      if (result.insert) {
-        const originalInsert = result.insert;
-        result.insert = async function() {
-          try {
-            console.log(`[Supabase Debug] Inserindo na tabela ${table}:`, arguments[0]);
-            return await originalInsert.apply(this, arguments);
-          } catch (error) {
-            console.error(`[Supabase Error] Insert em ${table} falhou:`, error);
-            throw error;
-          }
-        };
-      }
-      
-      // Adicionar logging para operações update
-      if (result.update) {
-        const originalUpdate = result.update;
-        result.update = async function() {
-          try {
-            console.log(`[Supabase Debug] Atualizando na tabela ${table}:`, arguments[0]);
-            return await originalUpdate.apply(this, arguments);
-          } catch (error) {
-            console.error(`[Supabase Error] Update em ${table} falhou:`, error);
-            throw error;
-          }
-        };
-      }
-      
-      return result;
-    };
-  }
-}
-
-export default supabase; 
+// Exportar como default também para compatibilidade
+export default supabase;
+export { supabase }; 

@@ -4,3 +4,5 @@ globs:
 alwaysApply: false
 ---
 Toda vez que você for corrigir um bug ou erro, me dê ao menos 5 opções e escolha alguma sempre que você tiver 90% de certeza que vai funcionar. Caso não tenha, debugue e faça perguntas até chegar nessa porcentagem de certeza. Sempre prefira soluções simples, no caso do uso do supabase siga as recomendações do supabase, não tente criar coisas para dificultar o uso.
+
+Se você for fazer alguma alteração em componentes, funções, layouts, escopo ou estrutura do projeto e isso for alterar outra coisa, avise que vai mudar algo além do que eu pedir e me fale o que mudaria para que eu tenha o poder de dicisão de esolher se mudo ou não. Exemplo, se eu pedir para você mudar o botão da tela de componentes e esse botão estiver em uso na tela home, me fale e pergunte se eu desejo fazer essa alteração.

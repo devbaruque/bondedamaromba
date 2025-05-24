@@ -473,7 +473,7 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.GRAY[800],
   },
   appTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '700',
     color: COLORS.TEXT.LIGHT,
     marginBottom: 4,
@@ -496,9 +496,6 @@ const styles = StyleSheet.create({
   },
   addButton: {
     padding: SPACING.XS,
-  },
-  scrollContent: {
-    flexGrow: 1,
   },
   workoutList: {
     padding: SPACING.MD,
