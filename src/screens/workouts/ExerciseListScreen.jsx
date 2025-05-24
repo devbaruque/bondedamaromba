@@ -318,8 +318,19 @@ const ExerciseListScreen = ({ navigation, route }) => {
         workoutId: workout.id,
         sessionId: activeSession?.id,
         isSessionActive: true,
-        onComplete: (exerciseId, completedSets) => {
-          handleToggleComplete(exerciseId, completedSets);
+        isCompleted: completedExercises[exercise.id] || false,
+        onComplete: (completedSetsCount) => {
+          // Se todas as séries foram completadas, marcar o exercício como concluído
+          if (completedSetsCount === exercise.sets) {
+            handleToggleComplete(exercise.id, completedSetsCount);
+          } else if (completedSetsCount > 0) {
+            // Se algumas séries foram completadas, atualizar o contador de séries
+            // mas não marcar o exercício como totalmente concluído
+            setCompletedSets(prev => ({
+              ...prev,
+              [exercise.id]: completedSetsCount
+            }));
+          }
         }
       });
     } else if (!animatingCompletion) {
@@ -329,7 +340,7 @@ const ExerciseListScreen = ({ navigation, route }) => {
         workoutId: workout.id 
       });
     }
-  }, [isSessionActive, animatingCompletion, navigation, workout.id, activeSession, handleToggleComplete]);
+  }, [isSessionActive, animatingCompletion, navigation, workout.id, activeSession, handleToggleComplete, completedExercises]);
 
   // Navegar para edição do exercício
   const handleEditExercise = useCallback((exercise) => {
@@ -393,19 +404,34 @@ const ExerciseListScreen = ({ navigation, route }) => {
   const handleToggleComplete = useCallback((exerciseId, setsCompleted = 0) => {
     if (animatingCompletion) return;
     
-    setCompletedExercises(prev => {
-      const newState = {...prev};
-      
-      if (newState[exerciseId]) {
-        // Se já estava completo, desmarcar
-        delete newState[exerciseId];
-      } else {
-        // Marcar como completo
+    const exercise = exercises.find(ex => ex.id === exerciseId);
+    if (!exercise) return;
+    
+    const allSetsCompleted = setsCompleted === exercise.sets;
+    
+    // Se todas as séries foram completadas, marcar o exercício como concluído
+    if (allSetsCompleted) {
+      setCompletedExercises(prev => {
+        const newState = {...prev};
         newState[exerciseId] = true;
-      }
-      
-      return newState;
-    });
+        return newState;
+      });
+    } else if (setsCompleted === 0) {
+      // Caso específico: Toggle manual (clique no botão de completar)
+      setCompletedExercises(prev => {
+        const newState = {...prev};
+        
+        if (newState[exerciseId]) {
+          // Se já estava completo, desmarcar
+          delete newState[exerciseId];
+        } else {
+          // Marcar como completo
+          newState[exerciseId] = true;
+        }
+        
+        return newState;
+      });
+    }
     
     // Atualizar quantidade de séries completadas, se informado
     if (setsCompleted > 0) {
@@ -417,25 +443,22 @@ const ExerciseListScreen = ({ navigation, route }) => {
     
     // Se estiver em uma sessão ativa, registrar no servidor
     if (isSessionActive && activeSession && activeSession.id) {
-      const exercise = exercises.find(ex => ex.id === exerciseId);
-      if (exercise) {
-        // Determinar quantas séries foram completadas
-        const sets = setsCompleted || exercise.sets || 1;
-        
-        // Enviar log para o servidor em background
-        logExerciseCompletion(activeSession.id, exerciseId, sets)
-          .then(({ data, error }) => {
-            if (error) {
-              console.error('Erro ao registrar conclusão do exercício:', error);
-              // Não mostrar alerta para não interromper o fluxo do usuário
-            } else {
-              console.log('Exercício registrado com sucesso:', data);
-            }
-          })
-          .catch(error => {
+      // Determinar quantas séries foram completadas
+      const sets = setsCompleted || exercise.sets || 1;
+      
+      // Enviar log para o servidor em background
+      logExerciseCompletion(activeSession.id, exerciseId, sets)
+        .then(({ data, error }) => {
+          if (error) {
             console.error('Erro ao registrar conclusão do exercício:', error);
-          });
-      }
+            // Não mostrar alerta para não interromper o fluxo do usuário
+          } else {
+            console.log('Exercício registrado com sucesso:', data);
+          }
+        })
+        .catch(error => {
+          console.error('Erro ao registrar conclusão do exercício:', error);
+        });
     }
   }, [animatingCompletion, isSessionActive, activeSession, exercises]);
 

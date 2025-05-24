@@ -54,7 +54,8 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
       } else if (data) {
         setExercise(data);
         // Inicializar o array de séries completadas com base no parâmetro isCompleted
-        setCompletedSets(new Array(data.sets).fill(isCompleted));
+        const initialCompletedSets = new Array(data.sets).fill(isCompleted);
+        setCompletedSets(initialCompletedSets);
       }
     } catch (error) {
       console.error('Erro ao buscar detalhes do exercício:', error);
@@ -128,6 +129,7 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
   // Salvar progresso e voltar
   const handleSaveProgress = () => {
     const completedCount = completedSets.filter(set => set).length;
+    const allCompleted = completedCount === exercise.sets;
     
     // Se há séries completadas, considerar o exercício como realizado
     if (completedCount > 0) {
@@ -135,7 +137,12 @@ const ExerciseDetailScreen = ({ navigation, route }) => {
         onComplete(completedCount);
       }
       
-      Alert.alert('Progresso Salvo', `${completedCount} séries registradas`);
+      // Se todas as séries foram completadas, mostrar uma mensagem diferente
+      if (allCompleted) {
+        Alert.alert('Progresso Salvo', `Exercício concluído com sucesso! Todas as ${completedCount} séries registradas.`);
+      } else {
+        Alert.alert('Progresso Salvo', `${completedCount} de ${exercise.sets} séries registradas`);
+      }
     }
     
     navigation.goBack();
